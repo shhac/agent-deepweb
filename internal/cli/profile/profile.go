@@ -1,16 +1,23 @@
-// Package creds implements the `creds` command tree for managing stored
-// credentials. The package is split into per-concern files:
+// Package profile implements the `profile` command tree for managing
+// stored profiles. A profile bundles a credential's secret material, host/
+// path allowlist, default headers, User-Agent override, and (for form
+// auth) a derived session jar — all the state that constitutes one
+// "identity" against an upstream service.
 //
-//	creds.go    Register + list + show
+// The package is split into per-concern files:
+//
+//	profile.go  Register + list + show
 //	test.go     test (health-check) subcommand
 //	add.go      add subcommand, addOpts, per-auth-type Secrets builders
 //	remove.go   remove subcommand
-//	domains.go  allow/disallow and allow-path/disallow-path + mutateSlice
+//	domains.go  allow/disallow and allow-path/disallow-path
 //	config.go   set-health, (un)set-default-header, set-allow-http, set-user-agent
 //
 // Subcommand wiring lives here; each register* lives in the file that
-// implements its subcommand.
-package creds
+// implements its subcommand. Mutating subcommands that widen scope or
+// reveal secrets require the profile's primary secret to be re-asserted
+// — see internal/cli/shared/secret_assert.go.
+package profile
 
 import (
 	"fmt"
@@ -24,13 +31,13 @@ import (
 
 func Register(root *cobra.Command, _ shared.Globals) {
 	cmd := &cobra.Command{
-		Use:   "creds",
-		Short: "Manage stored credentials",
+		Use:   "profile",
+		Short: "Manage stored profiles (auth identities)",
 	}
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "llm-help",
-		Short: "Show detailed reference for creds",
+		Short: "Show detailed reference for profile",
 		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
 	})
 
@@ -55,13 +62,13 @@ func Register(root *cobra.Command, _ shared.Globals) {
 func registerList(parent *cobra.Command) {
 	parent.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "List credentials (no secret values)",
+		Short: "List profiles (no secret values)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			creds, err := credential.List()
+			profiles, err := credential.List()
 			if err != nil {
 				return shared.FailHuman(err)
 			}
-			output.PrintJSON(map[string]any{"credentials": creds})
+			output.PrintJSON(map[string]any{"profiles": profiles})
 			return nil
 		},
 	})
@@ -70,7 +77,7 @@ func registerList(parent *cobra.Command) {
 func registerShow(parent *cobra.Command) {
 	parent.AddCommand(&cobra.Command{
 		Use:   "show <name>",
-		Short: "Show credential metadata (no secret values)",
+		Short: "Show profile metadata (no secret values)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := credential.GetMetadata(args[0])

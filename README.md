@@ -1,12 +1,18 @@
 # agent-deepweb
 
-`curl`-with-auth for AI agents. The user stores credentials under names; the LLM invokes them by name. The LLM never sees the secret values.
+`curl`-with-auth for AI agents. The user registers profiles (auth identities) under names; the LLM invokes them by name. The LLM never sees the secret values.
 
 ## Why
 
 LLM agents routinely need to call authenticated endpoints — GraphQL behind a Bearer token, an admin API with basic auth, a dashboard behind a cookie login. Putting the token in the prompt leaks it into logs and transcripts. Putting it in an env var still lets the model `echo $TOKEN`. `agent-deepweb` keeps the secret with the user and lets the agent reference it by name.
 
 ## Install
+
+### Homebrew
+
+```bash
+brew install shhac/tap/agent-deepweb
+```
 
 ### Build from source
 
@@ -19,27 +25,27 @@ make build
 
 ## Quick start
 
-### 1. Register a credential (human, one-time)
+### 1. Register a profile (one-time)
 
 ```bash
 # Bearer token (most common)
-agent-deepweb creds add github --type bearer \
+agent-deepweb profile add github --type bearer \
   --token ghp_xxx --domain api.github.com
 
 # Basic auth
-agent-deepweb creds add intranet --type basic \
+agent-deepweb profile add intranet --type basic \
   --username alice --password 'pw' --domain intranet.example.com
 
 # Raw cookie
-agent-deepweb creds add dashboard --type cookie \
+agent-deepweb profile add dashboard --type cookie \
   --cookie 'session=abc; other=xyz' --domain dashboard.example.com
 
 # Custom header (API-key)
-agent-deepweb creds add myapi --type custom \
+agent-deepweb profile add myapi --type custom \
   --custom-header 'X-API-Key: sk-xxx' --domain api.example.com
 
 # Form-login (POSTs creds + harvests a session cookie + optional token)
-agent-deepweb creds add myapp --type form \
+agent-deepweb profile add myapp --type form \
   --login-url https://api.example.com/login \
   --username alice --password 'pw' \
   --token-path access_token \
@@ -52,7 +58,7 @@ On macOS the secret lives in the Keychain (service `app.paulie.agent-deepweb`). 
 ### 2. Fetch
 
 ```bash
-# Auto-resolves credential by host
+# Auto-resolves profile by host
 agent-deepweb fetch https://api.github.com/user
 
 # Explicit
@@ -66,6 +72,9 @@ agent-deepweb fetch https://api.example.com/v1/items \
 agent-deepweb graphql https://api.github.com/graphql \
   --auth github \
   --query 'query { viewer { login } }'
+
+# Anonymous fetch (you must opt in explicitly)
+agent-deepweb fetch https://example.com/healthz --no-auth
 ```
 
 ### 3. Run a template (highest-safety mode)
@@ -73,10 +82,7 @@ agent-deepweb graphql https://api.github.com/graphql \
 A template is a frozen request shape authored by the human. The LLM can only fill in parameter values.
 
 ```bash
-# Import a template file (human-only)
 agent-deepweb tpl import ./templates/github.json
-
-# Run — LLM-safe
 agent-deepweb tpl run github.get_user --param username=octocat
 agent-deepweb tpl run github.create_issue \
   --param owner=shhac --param repo=x --param title='Oops'
@@ -101,36 +107,39 @@ Structured JSON envelope on stdout:
 
 With `--format raw` the response body prints directly.
 
-## How secrets are protected from the LLM
+## How the security model works
+
+agent-deepweb's job: don't be a hole in the harness's sandbox. The harness (Claude Code) controls which subcommands the LLM can invoke; agent-deepweb makes sure each subcommand can't be misused.
 
 | Guarantee | Mechanism |
 |-----------|-----------|
-| LLM references credentials by name | `fetch --auth <name>`; never by value |
-| LLM can't read stored secrets | `creds list/show` prints metadata only; no "reveal" command |
-| LLM can't add/remove/expand creds | Human-only; refused when `AGENT_DEEPWEB_MODE=agent` |
-| Credential off-URL is refused | Host+port and optional path allowlist per credential |
-| Plain http:// blocked for auth | Unless loopback, `creds set-allow-http`, or per-request `--allow-http` (human-only) |
-| Upstream echoing of secrets is masked | Response headers matching auth patterns → `<redacted>` |
-| Token-like JSON fields are masked | Response body fields matching `access_token\|refresh_token\|client_secret\|password\|secret\|bearer\|token\|api[-_]?key` → `<redacted>` |
-| Literal stored secret masked in body | Byte-level substitution matches the exact token/password/cookie value |
-| Sensitive vs non-sensitive cookies | HttpOnly and name-pattern classification; `session show` reveals non-sensitive only |
-| Redaction can't be disabled in agent mode | `--no-redact` refuses with `fixable_by: human` |
-| Request is audited | Every request appends a JSONL line to `~/.config/agent-deepweb/audit.log` |
+| LLM references profiles by name | `fetch --auth <name>`; never by value |
+| LLM can't read stored secrets | `profile list/show` prints metadata only |
+| Profile off-URL is refused | Per-profile host[:port] + optional path allowlist |
+| Anonymous request must be explicit | `--no-auth` opt-in; no silent fallthrough |
+| Plain http:// blocked for auth | Unless loopback or per-profile `allow_http` (set with `profile set-allow-http <name> true --token ...`) |
+| Redirects can't escape allowlist | `CheckRedirect` refuses cross-allowlist hops |
+| Upstream echoing of secrets is masked | Headers + JSON fields + literal byte echo redaction (always on) |
+| Sensitive cookies masked in `session show` | HttpOnly + name-pattern classification; human override via `mark-sensitive`/`mark-visible` |
+| Escalation requires re-asserting the primary secret | `profile allow / set-default-header / set-allow-http / session mark-visible` all overwrite the stored secret with what's supplied. Wrong value → silent break, no exfil |
+| Every request is audited | Append-only JSONL at `~/.config/agent-deepweb/audit.log` |
+
+The "primary secret re-assertion" replaces the v1 mode-gated refusals: it puts the asymmetry between humans (who know the secret) and LLMs (who don't) at the write itself, not in a soft env-var contract.
 
 ## Errors
 
 Errors go to stderr as JSON with a classification so the LLM knows what to do next:
 
 ```json
-{ "error": "credential \"myapi\" is not allowed on evil.example.com (host/path not in allowlist)",
-  "hint": "Ask the user to run 'agent-deepweb creds allow myapi evil.example.com' or widen --path",
+{ "error": "no credential matches https://example.com/",
+  "hint": "Ask the user to register one with 'agent-deepweb profile add', or pass --no-auth to make an anonymous request explicitly.",
   "fixable_by": "human" }
 ```
 
 | `fixable_by` | LLM behavior |
 |-------------|--------------|
 | `agent`     | Fix and retry (typo, 404, bad JSON, multiple matches, type error) |
-| `human`     | Stop and ask user (missing cred, 401/403, allowlist, expired session, http-scheme refusal) |
+| `human`     | Stop and ask user (missing profile, 401/403, allowlist, expired session, http-scheme refusal) |
 | `retry`     | Retry once with backoff (429, 5xx, network timeout) |
 
 ## Commands
@@ -142,32 +151,32 @@ agent-deepweb graphql <url> [flags]              GraphQL POST
 
 agent-deepweb tpl list
 agent-deepweb tpl show <name>
-agent-deepweb tpl run <name> --param k=v         Agent-safe
-agent-deepweb tpl import <file>                  HUMAN-ONLY
-agent-deepweb tpl remove <name>                  HUMAN-ONLY
+agent-deepweb tpl run <name> --param k=v         Agent-safe (LLM fills values)
+agent-deepweb tpl import <file>
+agent-deepweb tpl remove <name>
 
-agent-deepweb creds list
-agent-deepweb creds show <name>
-agent-deepweb creds test <name>
-agent-deepweb creds add <name> ...               HUMAN-ONLY
-agent-deepweb creds remove <name>                HUMAN-ONLY
-agent-deepweb creds allow <name> <domain>        HUMAN-ONLY
-agent-deepweb creds disallow <name> <domain>     HUMAN-ONLY
-agent-deepweb creds allow-path <name> <path>     HUMAN-ONLY
-agent-deepweb creds disallow-path <name> <path>  HUMAN-ONLY
-agent-deepweb creds set-health <name> <url>      HUMAN-ONLY
-agent-deepweb creds set-default-header <name> "K: V"  HUMAN-ONLY
-agent-deepweb creds unset-default-header <name> K     HUMAN-ONLY
-agent-deepweb creds set-allow-http <name> true   HUMAN-ONLY
-agent-deepweb creds set-user-agent <name> <ua>   HUMAN-ONLY
+agent-deepweb profile list
+agent-deepweb profile show <name>
+agent-deepweb profile test <name>
+agent-deepweb profile add <name> --type <t> ...
+agent-deepweb profile remove <name>
+agent-deepweb profile allow <name> <domain>      --token T   (re-supply primary secret)
+agent-deepweb profile disallow <name> <domain>
+agent-deepweb profile allow-path <name> <path>   --token T
+agent-deepweb profile disallow-path <name> <path>
+agent-deepweb profile set-health <name> <url>
+agent-deepweb profile set-default-header <name> "K: V" --token T
+agent-deepweb profile unset-default-header <name> K
+agent-deepweb profile set-allow-http <name> true --token T
+agent-deepweb profile set-user-agent <name> <ua>
 
-agent-deepweb login <name>                       HUMAN-ONLY (form-login flow)
+agent-deepweb login <name>                       Form-login flow
 agent-deepweb session status <name>
-agent-deepweb session show <name>                Cookies with sensitive values masked
-agent-deepweb session clear <name>               HUMAN-ONLY
-agent-deepweb session set-expires <name> <d|ts>  HUMAN-ONLY
-agent-deepweb session mark-sensitive <name> <c>  HUMAN-ONLY
-agent-deepweb session mark-visible   <name> <c>  HUMAN-ONLY
+agent-deepweb session show <name>                Cookies; sensitive values masked
+agent-deepweb session clear <name>
+agent-deepweb session set-expires <name> <d|ts>
+agent-deepweb session mark-sensitive <name> <c> [c2 ...]
+agent-deepweb session mark-visible   <name> <c> [c2 ...]   --token T
 
 agent-deepweb audit tail [-n N]
 agent-deepweb audit summary
@@ -187,8 +196,7 @@ Per-command `llm-help` subcommands exist for all top-level verbs.
 ## Environment variables
 
 ```
-AGENT_DEEPWEB_MODE=agent         Enforce LLM-safety mode; human-only commands refuse.
-AGENT_DEEPWEB_AUTH               Default credential name.
+AGENT_DEEPWEB_AUTH               Default profile name.
 AGENT_DEEPWEB_CONFIG_DIR         Override ~/.config/agent-deepweb (useful in tests).
 AGENT_DEEPWEB_TIMEOUT            Default request timeout in milliseconds.
 AGENT_DEEPWEB_USER_AGENT         Fallback User-Agent string.
@@ -197,7 +205,25 @@ AGENT_DEEPWEB_AUDIT=off          Disable audit-log writes.
 
 ## Claude Code skill
 
-`skills/agent-deepweb/SKILL.md` ships with the repo. Point your Claude Code skill loader at it. Set `AGENT_DEEPWEB_MODE=agent` in the skill's env so human-only commands refuse.
+`skills/agent-deepweb/SKILL.md` ships with the repo. Configure your harness to allowlist these commands for the LLM:
+
+```
+agent-deepweb llm-help
+agent-deepweb fetch *
+agent-deepweb graphql *
+agent-deepweb tpl run *
+agent-deepweb tpl list
+agent-deepweb tpl show *
+agent-deepweb profile list
+agent-deepweb profile show *
+agent-deepweb profile test *
+agent-deepweb session status *
+agent-deepweb session show *
+agent-deepweb audit tail *
+agent-deepweb audit summary
+```
+
+The harness denies everything else — including the escalation commands. agent-deepweb's primary-secret-re-assertion is a second line of defence in case the harness allowlist drifts.
 
 ## Development
 

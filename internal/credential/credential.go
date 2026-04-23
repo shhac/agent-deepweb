@@ -87,7 +87,7 @@ type Resolved struct {
 
 type NotFoundError struct{ Name string }
 
-func (e *NotFoundError) Error() string { return fmt.Sprintf("credential %q not found", e.Name) }
+func (e *NotFoundError) Error() string { return fmt.Sprintf("profile %q not found", e.Name) }
 
 // indexEntry is the on-disk JSON shape for a single credential's metadata.
 // When KeychainManaged is false (non-macOS), the matching Secrets live

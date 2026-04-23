@@ -31,7 +31,7 @@ func enforceScheme(u *url.URL, auth *credential.Resolved) error {
 	}
 	return agenterrors.Newf(agenterrors.FixableByHuman,
 		"refusing to send credential %q over http://", auth.Name).
-		WithHint("Credentials travel in cleartext on http://. Use https:// or run 'agent-deepweb creds set-allow-http " + auth.Name + " true' to opt in for this credential.")
+		WithHint("Credentials travel in cleartext on http://. Use https:// or run 'agent-deepweb profile set-allow-http " + auth.Name + " true' to opt in for this credential.")
 }
 
 // isLoopback returns true for hosts that are safe to send credentials to

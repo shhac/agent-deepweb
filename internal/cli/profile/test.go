@@ -1,4 +1,4 @@
-package creds
+package profile
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	if resolved.Health == "" {
 		return shared.Fail(agenterrors.Newf(agenterrors.FixableByHuman,
 			"credential %q has no health URL configured", name).
-			WithHint("Ask the user to run 'agent-deepweb creds set-health " + name + " <url>'"))
+			WithHint("Ask the user to run 'agent-deepweb profile set-health " + name + " <url>'"))
 	}
 	u, parseErr := url.Parse(resolved.Health)
 	if parseErr != nil || u.Host == "" {
@@ -42,7 +42,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	if !resolved.MatchesURL(u) {
 		return shared.Fail(agenterrors.Newf(agenterrors.FixableByHuman,
 			"health URL %s is not in allowlist for %q", resolved.Health, name).
-			WithHint("Ask the user to add the host with 'agent-deepweb creds allow " + name + " " + u.Host + "'"))
+			WithHint("Ask the user to add the host with 'agent-deepweb profile allow " + name + " " + u.Host + "'"))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

@@ -1,4 +1,4 @@
-package creds
+package profile
 
 import (
 	"github.com/spf13/cobra"

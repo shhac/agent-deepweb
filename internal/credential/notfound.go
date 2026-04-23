@@ -16,8 +16,8 @@ func WrapNotFound(err error, name string) *agenterrors.APIError {
 		return nil
 	}
 	return agenterrors.Newf(agenterrors.FixableByAgent,
-		"credential %q not found", name).
-		WithHint("Run 'agent-deepweb creds list' to see available credentials")
+		"profile %q not found", name).
+		WithHint("Run 'agent-deepweb profile list' to see available profiles")
 }
 
 // ClassifyLookupErr converts an error from Resolve/GetMetadata into the

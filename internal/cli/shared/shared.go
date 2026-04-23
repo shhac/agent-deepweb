@@ -49,7 +49,7 @@ func ResolveAuth(rawURL, flagAuth string) (*credential.Resolved, error) {
 		if !c.MatchesURL(u) {
 			return nil, agenterrors.Newf(agenterrors.FixableByHuman,
 				"credential %q is not allowed on %s (host/path not in allowlist)", flagAuth, rawURL).
-				WithHint("Ask the user to run 'agent-deepweb creds allow " + flagAuth + " " + u.Host + "' or widen --path")
+				WithHint("Ask the user to run 'agent-deepweb profile allow " + flagAuth + " " + u.Host + "' or widen --path")
 		}
 		return c, nil
 	}
@@ -62,7 +62,7 @@ func ResolveAuth(rawURL, flagAuth string) (*credential.Resolved, error) {
 	case 0:
 		return nil, agenterrors.Newf(agenterrors.FixableByHuman,
 			"no credential matches %s", rawURL).
-			WithHint("Ask the user to register one with 'agent-deepweb creds add', or pass --no-auth to make an anonymous request explicitly.")
+			WithHint("Ask the user to register one with 'agent-deepweb profile add', or pass --no-auth to make an anonymous request explicitly.")
 	case 1:
 		return credential.Resolve(matches[0].Name)
 	default:

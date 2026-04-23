@@ -7,7 +7,7 @@ import (
 
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/audit"
-	"github.com/shhac/agent-deepweb/internal/cli/creds"
+	"github.com/shhac/agent-deepweb/internal/cli/profile"
 	"github.com/shhac/agent-deepweb/internal/cli/fetch"
 	"github.com/shhac/agent-deepweb/internal/cli/graphql"
 	"github.com/shhac/agent-deepweb/internal/cli/login"
@@ -33,13 +33,13 @@ func newRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "agent-deepweb",
 		Short:         "curl-with-auth for AI agents",
-		Long:          "Authenticated HTTP fetcher where credentials are stored by the user and referenced by name; the LLM never sees secret values.",
+		Long:          "Authenticated HTTP fetcher where profiles (auth identities) are registered by the user and referenced by name; the LLM never sees secret values.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().StringVar(&flagAuth, "auth", "", "Credential alias (or AGENT_DEEPWEB_AUTH)")
+	root.PersistentFlags().StringVar(&flagAuth, "auth", "", "Profile name (or AGENT_DEEPWEB_AUTH)")
 	root.PersistentFlags().StringVar(&flagFormat, "format", "", "Output format: json, jsonl, raw, text")
 	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 0, "Request timeout in milliseconds")
 
@@ -50,7 +50,7 @@ func newRootCmd(version string) *cobra.Command {
 	registerUsageCommand(root)
 	fetch.Register(root, allGlobals)
 	graphql.Register(root, allGlobals)
-	creds.Register(root, allGlobals)
+	profile.Register(root, allGlobals)
 	login.Register(root, allGlobals)
 	audit.Register(root, allGlobals)
 	tpl.Register(root, allGlobals)

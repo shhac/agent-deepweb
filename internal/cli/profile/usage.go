@@ -1,9 +1,9 @@
-package creds
+package profile
 
 const usageText = `creds — credential management
 
 USAGE
-  agent-deepweb creds <subcommand>
+  agent-deepweb profile <subcommand>
 
 SUBCOMMANDS (agent-safe)
   list                         List credentials (name, type, domains, storage)
@@ -26,19 +26,19 @@ AUTH TYPES
 
 HUMAN-ONLY EXAMPLES
   Add a Bearer-token credential:
-    agent-deepweb creds add github --type bearer \
+    agent-deepweb profile add github --type bearer \
       --token ghp_xxx --domain api.github.com
 
   Add a basic-auth credential:
-    agent-deepweb creds add intranet --type basic \
+    agent-deepweb profile add intranet --type basic \
       --username alice --password 'pw' --domain intranet.example.com
 
   Add a cookie-based credential (paste a known Cookie header):
-    agent-deepweb creds add dashboard --type cookie \
+    agent-deepweb profile add dashboard --type cookie \
       --cookie 'session=abc123; foo=bar' --domain dashboard.example.com
 
   Add multiple domains at once:
-    agent-deepweb creds add github --type bearer --token ghp_xxx \
+    agent-deepweb profile add github --type bearer --token ghp_xxx \
       --domain api.github.com --domain uploads.github.com
 
 NOTES

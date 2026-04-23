@@ -18,7 +18,7 @@ import (
 func Register(root *cobra.Command, _ shared.Globals) {
 	login := &cobra.Command{
 		Use:   "login <name>",
-		Short: "Run a credential's form-login flow to produce a session (human-only)",
+		Short: "Run a profile's form-login flow to produce a session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return doLogin(args[0])
