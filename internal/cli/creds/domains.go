@@ -7,47 +7,61 @@ import (
 	"github.com/shhac/agent-deepweb/internal/credential"
 )
 
+// `creds allow` and `creds allow-path` are escalation paths — they widen
+// what hosts/paths an existing credential will be sent to. We protect
+// these by requiring the credential's primary secret be re-asserted (see
+// secret_assert.go). Wrong value → silent overwrite, broken cred.
+//
+// `disallow` and `disallow-path` shrink the allowlist. Shrinking is not
+// escalation, so they don't require the primary secret.
+
 func registerAllow(parent *cobra.Command) {
-	parent.AddCommand(&cobra.Command{
+	a := &shared.SecretAssert{}
+	cmd := &cobra.Command{
 		Use:   "allow <name> <domain>",
-		Short: "Add host[:port] to allowlist (human-only)",
+		Short: "Add host[:port] to allowlist (re-supply credential's primary secret)",
 		Args:  cobra.ExactArgs(2),
-		RunE: shared.HumanOnlyRunE("creds allow", func(cmd *cobra.Command, args []string) error {
-			return mutateDomains(args[0], args[1], true)
-		}),
-	})
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return mutateDomains(args[0], args[1], true, a)
+		},
+	}
+	shared.BindSecretAssertFlags(cmd, a)
+	parent.AddCommand(cmd)
 }
 
 func registerDisallow(parent *cobra.Command) {
 	parent.AddCommand(&cobra.Command{
 		Use:   "disallow <name> <domain>",
-		Short: "Remove host[:port] from allowlist (human-only)",
+		Short: "Remove host[:port] from allowlist",
 		Args:  cobra.ExactArgs(2),
-		RunE: shared.HumanOnlyRunE("creds disallow", func(cmd *cobra.Command, args []string) error {
-			return mutateDomains(args[0], args[1], false)
-		}),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return mutateDomains(args[0], args[1], false, nil)
+		},
 	})
 }
 
 func registerAllowPath(parent *cobra.Command) {
-	parent.AddCommand(&cobra.Command{
+	a := &shared.SecretAssert{}
+	cmd := &cobra.Command{
 		Use:   "allow-path <name> <pattern>",
-		Short: "Add URL path pattern to allowlist (human-only)",
+		Short: "Add URL path pattern to allowlist (re-supply credential's primary secret)",
 		Args:  cobra.ExactArgs(2),
-		RunE: shared.HumanOnlyRunE("creds allow-path", func(cmd *cobra.Command, args []string) error {
-			return mutatePaths(args[0], args[1], true)
-		}),
-	})
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return mutatePaths(args[0], args[1], true, a)
+		},
+	}
+	shared.BindSecretAssertFlags(cmd, a)
+	parent.AddCommand(cmd)
 }
 
 func registerDisallowPath(parent *cobra.Command) {
 	parent.AddCommand(&cobra.Command{
 		Use:   "disallow-path <name> <pattern>",
-		Short: "Remove URL path pattern (human-only)",
+		Short: "Remove URL path pattern",
 		Args:  cobra.ExactArgs(2),
-		RunE: shared.HumanOnlyRunE("creds disallow-path", func(cmd *cobra.Command, args []string) error {
-			return mutatePaths(args[0], args[1], false)
-		}),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return mutatePaths(args[0], args[1], false, nil)
+		},
 	})
 }
 
@@ -72,10 +86,19 @@ func mutateSlice(existing []string, item string, add bool) (updated []string, no
 	return out, false
 }
 
-func mutateDomains(name, domain string, add bool) error {
+// mutateDomains adds or removes a host from the credential's allowlist.
+// When add=true, this is escalation — `assert` must contain the primary
+// secret, which is re-applied via escalateOverwrite. When add=false,
+// `assert` is ignored.
+func mutateDomains(name, domain string, add bool, assert *shared.SecretAssert) error {
 	c, err := credential.GetMetadata(name)
 	if err != nil {
 		return shared.Fail(credential.ClassifyLookupErr(err, name))
+	}
+	if add {
+		if err := shared.ApplySecretAssert(c, assert); err != nil {
+			return shared.Fail(err)
+		}
 	}
 	updated, noop := mutateSlice(c.Domains, domain, add)
 	if noop {
@@ -89,10 +112,15 @@ func mutateDomains(name, domain string, add bool) error {
 	return nil
 }
 
-func mutatePaths(name, pattern string, add bool) error {
+func mutatePaths(name, pattern string, add bool, assert *shared.SecretAssert) error {
 	c, err := credential.GetMetadata(name)
 	if err != nil {
 		return shared.Fail(credential.ClassifyLookupErr(err, name))
+	}
+	if add {
+		if err := shared.ApplySecretAssert(c, assert); err != nil {
+			return shared.Fail(err)
+		}
 	}
 	updated, noop := mutateSlice(c.Paths, pattern, add)
 	if noop {
@@ -105,3 +133,4 @@ func mutatePaths(name, pattern string, add bool) error {
 	shared.PrintOK(map[string]any{"name": name, "paths": updated})
 	return nil
 }
+

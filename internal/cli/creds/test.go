@@ -54,7 +54,6 @@ func runTest(cmd *cobra.Command, args []string) error {
 	}, api.ClientOptions{
 		Timeout:         15 * time.Second,
 		MaxBytes:        32 * 1024,
-		Redact:          true,
 		FollowRedirects: true,
 	})
 	result := map[string]any{

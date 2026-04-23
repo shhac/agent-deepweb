@@ -34,8 +34,6 @@ type opts struct {
 	maxBytes        int64
 	followRedirects bool
 	format          string
-	noRedact        bool
-	allowHTTP       bool
 	userAgent       string
 }
 
@@ -75,20 +73,10 @@ func bindFlags(cmd *cobra.Command, o *opts) {
 	f.Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
 	f.BoolVar(&o.followRedirects, "follow-redirects", true, "Follow redirects")
 	f.StringVar(&o.format, "format", "", "Output format: json, raw, text")
-	f.BoolVar(&o.noRedact, "no-redact", false, "Human-only: disable response redaction")
-	f.BoolVar(&o.allowHTTP, "allow-http", false, "Human-only: permit http:// for this request (overrides credential default)")
 	f.StringVarP(&o.userAgent, "user-agent", "A", "", "User-Agent for this request (else credential's UA; else agent-deepweb/<version>)")
 }
 
 func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
-	// --no-redact and --allow-http are human-only; refuse before touching anything.
-	if err := shared.RefuseFlag(o.noRedact, "--no-redact"); err != nil {
-		return shared.Fail(err)
-	}
-	if err := shared.RefuseFlag(o.allowHTTP, "--allow-http"); err != nil {
-		return shared.Fail(err)
-	}
-
 	authName := shared.FirstNonEmpty(o.auth, g.Auth)
 	if authName != "" && o.noAuth {
 		return shared.Fail(agenterrors.New("--auth and --no-auth are mutually exclusive", agenterrors.FixableByAgent).
@@ -103,6 +91,9 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 		}
 		auth = a
 	}
+	// Anonymous requests must opt in via --no-auth. ResolveAuth errors
+	// when no credential matches the URL, so reaching this point means
+	// either an explicit credential was picked or --no-auth was set.
 
 	body, contentType, err := buildBody(o)
 	if err != nil {
@@ -125,7 +116,6 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 	}
 
 	timeout, maxBytes := shared.ResolveLimits(o.timeoutMS, o.maxBytes, g)
-	redact := !o.noRedact || shared.IsAgentMode()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -137,12 +127,10 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 		Query:     query,
 		Body:      body,
 		Auth:      auth,
-		AllowHTTP: o.allowHTTP,
 		UserAgent: o.userAgent,
 	}, api.ClientOptions{
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
-		Redact:          redact,
 		FollowRedirects: o.followRedirects,
 	})
 

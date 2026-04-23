@@ -13,12 +13,6 @@ import (
 // envGet is a thin wrapper so tests can stub env lookups.
 var envGet = func(key string) string { return os.Getenv(key) }
 
-// isAgentMode mirrors shared.IsAgentMode locally to avoid an import cycle
-// (shared depends on credential, which is fine; api doesn't depend on shared).
-func isAgentMode() bool {
-	return strings.EqualFold(os.Getenv("AGENT_DEEPWEB_MODE"), "agent")
-}
-
 // buildHTTPRequest composes the *http.Request from a high-level Request
 // struct. Header application order matters:
 //  1. credential's DefaultHeaders (non-secret, metadata)

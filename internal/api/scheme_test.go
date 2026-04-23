@@ -17,20 +17,18 @@ func TestEnforceScheme(t *testing.T) {
 		name       string
 		rawURL     string
 		auth       *credential.Resolved
-		perReqOK   bool
 		wantErr    bool
 		hintHasStr string
 	}{
-		{"https passes", "https://api.example.com/", bearer, false, false, ""},
-		{"unknown scheme (ws) passes", "ws://api.example.com/", bearer, false, false, ""},
-		{"http to public host blocked", "http://api.example.com/", bearer, false, true, "set-allow-http"},
-		{"http to public host with per-request allow", "http://api.example.com/", bearer, true, false, ""},
-		{"http to public host with credential allow", "http://api.example.com/", bearerHTTP, false, false, ""},
-		{"http to localhost passes", "http://localhost:8080/", bearer, false, false, ""},
-		{"http to 127.0.0.1 passes", "http://127.0.0.1:8080/", bearer, false, false, ""},
-		{"http to ipv6 loopback passes", "http://[::1]:8080/", bearer, false, false, ""},
-		{"http to foo.localhost passes", "http://foo.localhost/", bearer, false, false, ""},
-		{"no auth → no check", "http://evil.example.com/", nil, false, false, ""},
+		{"https passes", "https://api.example.com/", bearer, false, ""},
+		{"unknown scheme (ws) passes", "ws://api.example.com/", bearer, false, ""},
+		{"http to public host blocked", "http://api.example.com/", bearer, true, "set-allow-http"},
+		{"http to public host with credential allow", "http://api.example.com/", bearerHTTP, false, ""},
+		{"http to localhost passes", "http://localhost:8080/", bearer, false, ""},
+		{"http to 127.0.0.1 passes", "http://127.0.0.1:8080/", bearer, false, ""},
+		{"http to ipv6 loopback passes", "http://[::1]:8080/", bearer, false, ""},
+		{"http to foo.localhost passes", "http://foo.localhost/", bearer, false, ""},
+		{"no auth → no check", "http://evil.example.com/", nil, false, ""},
 	}
 
 	for _, tc := range cases {
@@ -39,7 +37,7 @@ func TestEnforceScheme(t *testing.T) {
 			if err != nil {
 				t.Fatalf("bad test URL: %v", err)
 			}
-			gotErr := enforceScheme(u, tc.auth, tc.perReqOK)
+			gotErr := enforceScheme(u, tc.auth)
 			if tc.wantErr && gotErr == nil {
 				t.Fatal("expected error, got nil")
 			}

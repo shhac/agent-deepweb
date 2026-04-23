@@ -1,11 +1,11 @@
 // Package shared holds helpers used by multiple cobra command packages:
-// agent-mode detection, credential resolution by flag or URL, global flag
-// struct. Keeps the command packages from having a cyclic dep on internal/cli.
+// credential resolution by flag or URL, global flag struct, and small
+// CLI primitives. Keeps the command packages from having a cyclic dep on
+// internal/cli.
 package shared
 
 import (
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -23,31 +23,16 @@ type GlobalFlags struct {
 // on the root package directly.
 type Globals func() *GlobalFlags
 
-// IsAgentMode reports whether the binary is running under an LLM-agent
-// harness. Set AGENT_DEEPWEB_MODE=agent in your skill/hook config. In
-// agent mode, human-only commands refuse to run.
-func IsAgentMode() bool {
-	return strings.EqualFold(os.Getenv("AGENT_DEEPWEB_MODE"), "agent")
-}
-
-// RefuseInAgentMode returns an APIError if we're in agent mode, else nil.
-func RefuseInAgentMode(verb string) error {
-	if !IsAgentMode() {
-		return nil
-	}
-	return agenterrors.Newf(agenterrors.FixableByHuman,
-		"%s is a human-only operation", verb).
-		WithHint("This command writes or reveals secrets and is refused in agent mode. Ask the user to run it.")
-}
-
-// ResolveAuth resolves the credential to use for a given URL. The URL is
-// parsed here so host+port+path matching can happen against the credential's
-// allowlist. Resolution rules:
+// ResolveAuth resolves the credential to use for a given URL. Resolution rules:
 //   - If flagAuth is set, use that credential; fail if the URL isn't in its
 //     host/path allowlist.
-//   - Else, look up credentials whose allowlist matches the URL. Exactly
-//     one → use it. Zero → nil (caller decides if anonymous is allowed).
-//     Many → error asking for --auth <name>.
+//   - Else, look up credentials whose allowlist matches the URL.
+//     Exactly one → use it.
+//     Many → error naming the candidates so the caller can pick.
+//     Zero → error directing the caller to register a credential or
+//     pass --no-auth explicitly. (We never silently fall through to
+//     anonymous — that turned agent-deepweb into a generic outbound HTTP
+//     client and was a v1 hole.)
 func ResolveAuth(rawURL, flagAuth string) (*credential.Resolved, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
@@ -59,12 +44,7 @@ func ResolveAuth(rawURL, flagAuth string) (*credential.Resolved, error) {
 	if flagAuth != "" {
 		c, err := credential.Resolve(flagAuth)
 		if err != nil {
-			if _, ok := err.(*credential.NotFoundError); ok {
-				return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-					"credential %q not found", flagAuth).
-					WithHint("Run 'agent-deepweb creds list' to see available credentials")
-			}
-			return nil, agenterrors.Wrap(err, agenterrors.FixableByHuman)
+			return nil, credential.ClassifyLookupErr(err, flagAuth)
 		}
 		if !c.MatchesURL(u) {
 			return nil, agenterrors.Newf(agenterrors.FixableByHuman,
@@ -80,7 +60,9 @@ func ResolveAuth(rawURL, flagAuth string) (*credential.Resolved, error) {
 	}
 	switch len(matches) {
 	case 0:
-		return nil, nil
+		return nil, agenterrors.Newf(agenterrors.FixableByHuman,
+			"no credential matches %s", rawURL).
+			WithHint("Ask the user to register one with 'agent-deepweb creds add', or pass --no-auth to make an anonymous request explicitly.")
 	case 1:
 		return credential.Resolve(matches[0].Name)
 	default:

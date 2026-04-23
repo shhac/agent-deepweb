@@ -52,19 +52,19 @@ func registerSession(root *cobra.Command) {
 		Use:   "clear <name>",
 		Short: "Wipe stored session (human-only)",
 		Args:  cobra.ExactArgs(1),
-		RunE: shared.HumanOnlyRunE("session clear", func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := credential.ClearSession(args[0]); err != nil {
 				return shared.FailHuman(err)
 			}
 			shared.PrintOK(map[string]any{"name": args[0]})
 			return nil
-		}),
+		},
 	})
 	session.AddCommand(&cobra.Command{
 		Use:   "set-expires <name> <duration|RFC3339>",
 		Short: "Override session expiry (e.g. '2h' or '2026-05-01T00:00:00Z') (human-only)",
 		Args:  cobra.ExactArgs(2),
-		RunE: shared.HumanOnlyRunE("session set-expires", func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			sess, err := readSessionOrFail(args[0])
 			if err != nil {
 				return err
@@ -80,47 +80,74 @@ func registerSession(root *cobra.Command) {
 			status, _ := credential.GetSessionStatus(args[0])
 			output.PrintJSON(status)
 			return nil
-		}),
+		},
 	})
+	// mark-sensitive only narrows what the LLM can see, so it doesn't
+	// require the primary secret. mark-visible WIDENS what the LLM sees
+	// (un-masks a stored cookie value) and IS escalation: the credential's
+	// primary secret must be re-asserted, with the same overwrite-or-
+	// silently-break semantics as creds allow / set-default-header.
 	session.AddCommand(&cobra.Command{
-		Use:   "mark-sensitive <name> <cookie-name>",
-		Short: "Force cookie value to be redacted in session show (human-only)",
-		Args:  cobra.ExactArgs(2),
-		RunE:  markSensitivity(true),
+		Use:   "mark-sensitive <name> <cookie> [cookie...]",
+		Short: "Force one or more cookie values to be redacted in session show",
+		Args:  cobra.MinimumNArgs(2),
+		RunE:  markSensitivity(true, nil),
 	})
-	session.AddCommand(&cobra.Command{
-		Use:   "mark-visible <name> <cookie-name>",
-		Short: "Force cookie value to be shown in session show (human-only)",
-		Args:  cobra.ExactArgs(2),
-		RunE:  markSensitivity(false),
-	})
+	visibleAssert := &shared.SecretAssert{}
+	visibleCmd := &cobra.Command{
+		Use:   "mark-visible <name> <cookie> [cookie...]",
+		Short: "Un-mask one or more cookie values (re-supply credential's primary secret)",
+		Args:  cobra.MinimumNArgs(2),
+		RunE:  markSensitivity(false, visibleAssert),
+	}
+	shared.BindSecretAssertFlags(visibleCmd, visibleAssert)
+	session.AddCommand(visibleCmd)
 	root.AddCommand(session)
 }
 
 // markSensitivity returns a RunE that toggles the Sensitive flag on one
-// cookie. Both the sensitive=true and sensitive=false variants share this
-// implementation.
-func markSensitivity(sensitive bool) shared.RunEFunc {
-	verb := "session mark-visible"
-	if sensitive {
-		verb = "session mark-sensitive"
-	}
-	return shared.HumanOnlyRunE(verb, func(cmd *cobra.Command, args []string) error {
-		sess, err := readSessionOrFail(args[0])
+// or more cookies. The variadic form (multiple cookie names after the
+// session name) lets a human flip a batch in one call instead of N.
+//
+// When `assert` is non-nil (the un-mask path), the credential's primary
+// secret must be re-asserted before the cookie sensitivity is changed.
+// Wrong values overwrite the stored secret with garbage — the LLM gains
+// nothing from un-masking a session whose underlying credential is now
+// broken.
+func markSensitivity(sensitive bool, assert *shared.SecretAssert) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		cookies := args[1:]
+		if assert != nil {
+			c, err := credential.GetMetadata(name)
+			if err != nil {
+				return shared.Fail(credential.ClassifyLookupErr(err, name))
+			}
+			if err := shared.ApplySecretAssert(c, assert); err != nil {
+				return shared.Fail(err)
+			}
+		}
+		sess, err := readSessionOrFail(name)
 		if err != nil {
 			return err
 		}
-		if !sess.MarkCookieSensitivity(args[1], sensitive) {
+		var missing []string
+		for _, c := range cookies {
+			if !sess.MarkCookieSensitivity(c, sensitive) {
+				missing = append(missing, c)
+			}
+		}
+		if len(missing) > 0 {
 			return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent,
-				"cookie %q not found in session %q", args[1], args[0]))
+				"cookie(s) %v not found in session %q", missing, name))
 		}
 		if err := credential.WriteSession(sess); err != nil {
 			return shared.FailHuman(err)
 		}
-		show, _ := credential.GetSessionShow(args[0])
+		show, _ := credential.GetSessionShow(name)
 		output.PrintJSON(show)
 		return nil
-	})
+	}
 }
 
 // readSessionOrFail loads a session file, returning a classified error

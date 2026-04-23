@@ -8,41 +8,6 @@ import (
 	"github.com/shhac/agent-deepweb/internal/credential"
 )
 
-func TestIsAgentMode_CaseInsensitive(t *testing.T) {
-	cases := []struct {
-		env  string
-		want bool
-	}{
-		{"agent", true},
-		{"AGENT", true},
-		{"Agent", true},
-		{"", false},
-		{"off", false},
-		{"human", false},
-	}
-	for _, tc := range cases {
-		t.Setenv("AGENT_DEEPWEB_MODE", tc.env)
-		if IsAgentMode() != tc.want {
-			t.Errorf("env=%q IsAgentMode()=%v, want %v", tc.env, !tc.want, tc.want)
-		}
-	}
-}
-
-func TestRefuseInAgentMode(t *testing.T) {
-	t.Setenv("AGENT_DEEPWEB_MODE", "")
-	if err := RefuseInAgentMode("anything"); err != nil {
-		t.Errorf("non-agent mode should return nil, got %v", err)
-	}
-	t.Setenv("AGENT_DEEPWEB_MODE", "agent")
-	err := RefuseInAgentMode("creds add")
-	if err == nil {
-		t.Fatal("agent mode should return an error")
-	}
-	if !strings.Contains(err.Error(), "creds add") {
-		t.Errorf("error should name the verb: %v", err)
-	}
-}
-
 func TestResolveAuth(t *testing.T) {
 	dir := t.TempDir()
 	config.SetConfigDir(dir)
@@ -92,10 +57,13 @@ func TestResolveAuth(t *testing.T) {
 			t.Errorf("expected ambiguity error, got %v", err)
 		}
 	})
-	t.Run("no match → nil, nil", func(t *testing.T) {
-		r, err := ResolveAuth("https://nobody.example.com/p", "")
-		if err != nil || r != nil {
-			t.Errorf("got r=%+v err=%v; want nil,nil (anonymous request)", r, err)
+	t.Run("no match → human-fixable error (v2 forces explicit --no-auth)", func(t *testing.T) {
+		_, err := ResolveAuth("https://nobody.example.com/p", "")
+		if err == nil {
+			t.Fatal("expected error when no credential matches")
+		}
+		if !strings.Contains(err.Error(), "no credential matches") {
+			t.Errorf("error wording: %v", err)
 		}
 	})
 	t.Run("unique auto-resolve", func(t *testing.T) {

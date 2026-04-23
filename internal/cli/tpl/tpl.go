@@ -99,7 +99,7 @@ func registerImport(parent *cobra.Command) {
 		Use:   "import <file>",
 		Short: "Import template(s) from a JSON file (human-only)",
 		Args:  cobra.ExactArgs(1),
-		RunE: shared.HumanOnlyRunE("tpl import", func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			stored, err := template.ImportFile(args[0])
 			if err != nil {
 				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman).
@@ -107,7 +107,7 @@ func registerImport(parent *cobra.Command) {
 			}
 			shared.PrintOK(map[string]any{"imported": stored})
 			return nil
-		}),
+		},
 	})
 }
 
@@ -116,12 +116,12 @@ func registerRemove(parent *cobra.Command) {
 		Use:   "remove <name>",
 		Short: "Remove a template (human-only)",
 		Args:  cobra.ExactArgs(1),
-		RunE: shared.HumanOnlyRunE("tpl remove", func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := template.Remove(args[0]); err != nil {
 				return shared.Fail(template.ClassifyLookupErr(err, args[0]))
 			}
 			shared.PrintOK(map[string]any{"name": args[0]})
 			return nil
-		}),
+		},
 	})
 }

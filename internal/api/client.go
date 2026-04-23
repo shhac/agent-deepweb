@@ -16,6 +16,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -44,9 +45,6 @@ type Request struct {
 	Query   map[string][]string
 	Body    io.Reader
 	Auth    *credential.Resolved
-	// AllowHTTP permits http:// on bearer/basic/cookie/form credentials.
-	// Default false — must be opted into per-request (human-only flag).
-	AllowHTTP bool
 	// UserAgent, if non-empty, overrides everything (credential's UA, env,
 	// and the default). Empty = fall through the precedence chain.
 	UserAgent string
@@ -70,11 +68,11 @@ type Response struct {
 }
 
 // ClientOptions carry request-level defaults that would otherwise pile up
-// as parameters to Do.
+// as parameters to Do. Redaction is always on — there's no "no-redact"
+// escape hatch in v2; if a human really wants raw output they can use curl.
 type ClientOptions struct {
 	Timeout         time.Duration
 	MaxBytes        int64
-	Redact          bool
 	FollowRedirects bool
 }
 
@@ -124,7 +122,7 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 		return nil, outErr
 	}
 
-	if err := enforceScheme(parsedURL, req.Auth, req.AllowHTTP); err != nil {
+	if err := enforceScheme(parsedURL, req.Auth); err != nil {
 		outErr = err
 		return nil, outErr
 	}
@@ -141,11 +139,10 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 		return nil, outErr
 	}
 
-	client := &http.Client{Timeout: opts.Timeout, Jar: jar}
-	if !opts.FollowRedirects {
-		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
+	client := &http.Client{
+		Timeout:       opts.Timeout,
+		Jar:           jar,
+		CheckRedirect: buildRedirectPolicy(req.Auth, opts.FollowRedirects),
 	}
 
 	httpResp, err := client.Do(httpReq)
@@ -164,12 +161,12 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 	newCookieViews := harvestSessionCookies(req.Auth, httpResp, parsedURL)
 
 	contentType := httpResp.Header.Get("Content-Type")
-	headers := httpResp.Header
-	if opts.Redact {
-		headers = RedactHeaders(httpResp.Header)
-		body = RedactJSONBody(body, contentType)
-		body = RedactSecretEcho(body, req.Auth)
-	}
+	// Redaction is mandatory in v2 — the layered redactors run on every
+	// response, no opt-out flag. If a human really needs raw output, they
+	// can use curl.
+	headers := RedactHeaders(httpResp.Header)
+	body = RedactJSONBody(body, contentType)
+	body = RedactSecretEcho(body, req.Auth)
 
 	resp = &Response{
 		Status:      httpResp.StatusCode,
@@ -194,6 +191,40 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 	return resp, nil
 }
 
+// buildRedirectPolicy returns the CheckRedirect function for the HTTP
+// client:
+//
+//  1. If the caller disabled redirects, hand back the first response.
+//  2. If a credential is attached, refuse redirects that leave the
+//     credential's URL allowlist. Go's default policy already strips the
+//     Authorization header on cross-host redirects, but it still *follows*
+//     them — which would let an upstream (or a compromised upstream) bounce
+//     us to an arbitrary host, turning agent-deepweb into an outbound hop
+//     around the harness's sandbox.
+//  3. No credential, redirects allowed: fall back to stdlib default
+//     (max 10 redirects).
+func buildRedirectPolicy(auth *credential.Resolved, follow bool) func(*http.Request, []*http.Request) error {
+	if !follow {
+		return func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	if auth == nil {
+		return nil // stdlib default — 10-redirect cap
+	}
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		if !auth.MatchesURL(req.URL) {
+			return agenterrors.Newf(agenterrors.FixableByHuman,
+				"refusing redirect to %s — outside allowlist for %q", req.URL.Host, auth.Name).
+				WithHint("The upstream is trying to send us to a host the credential wasn't registered for. If this is legitimate, ask the user to widen --domain.")
+		}
+		return nil
+	}
+}
+
 // buildAuditEntry converts a Do invocation's inputs + outcome into an
 // audit.Entry. Pure function — all state comes from its args, making the
 // deferred call site in Do trivial to read.
@@ -205,7 +236,6 @@ func buildAuditEntry(req Request, started time.Time, resp *Response, outErr erro
 		Host:       host,
 		Path:       path,
 		Template:   req.TemplateName,
-		AgentMode:  isAgentMode(),
 		DurationMS: time.Since(started).Milliseconds(),
 	}
 	if req.Auth != nil {

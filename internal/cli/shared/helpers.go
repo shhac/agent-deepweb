@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/shhac/agent-deepweb/internal/config"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
@@ -42,36 +40,6 @@ func PrintOK(extras map[string]any) {
 		m[k] = v
 	}
 	output.PrintJSON(m)
-}
-
-// RunEFunc is cobra's RunE signature, repeated here so wrapper names read
-// nicely.
-type RunEFunc = func(cmd *cobra.Command, args []string) error
-
-// HumanOnlyRunE wraps a RunE so that it refuses in agent mode before the
-// inner function ever runs. The refusal is emitted as a fixable_by:human
-// error naming the verb. Use for any mutating/secret-revealing command.
-func HumanOnlyRunE(verb string, fn RunEFunc) RunEFunc {
-	return func(cmd *cobra.Command, args []string) error {
-		if err := RefuseInAgentMode(verb); err != nil {
-			return Fail(err)
-		}
-		return fn(cmd, args)
-	}
-}
-
-// RefuseFlag returns an error suitable for Fail() when a human-only flag
-// was passed while in agent mode. Caller usage:
-//
-//	if o.noRedact { if err := RefuseFlag(true, "--no-redact"); err != nil { return Fail(err) } }
-//
-// Kept explicit (rather than magic-wrapping flags) because the check is
-// conditional on the flag being set, not on the command itself.
-func RefuseFlag(set bool, flagName string) error {
-	if !set {
-		return nil
-	}
-	return RefuseInAgentMode(flagName)
 }
 
 // FirstNonEmpty returns the first non-empty string in vals, or "".
@@ -110,9 +78,7 @@ func SplitHeader(h string) (key, value string, ok bool) {
 }
 
 // SplitKV parses "key=value" (value may contain '='). Returns a classified
-// APIError on bad input citing the originating flag label. Returns ok=false
-// with a nil error only when an empty input is explicitly allowed — in
-// practice callers should treat err != nil as an immediate Fail.
+// APIError on bad input citing the originating flag label.
 func SplitKV(s, flagLabel string) (k, v string, err error) {
 	key, val, found := strings.Cut(s, "=")
 	if !found {

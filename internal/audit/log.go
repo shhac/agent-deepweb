@@ -26,7 +26,6 @@ type Entry struct {
 	Path       string    `json:"path,omitempty"`
 	Credential string    `json:"credential,omitempty"`
 	Template   string    `json:"template,omitempty"` // set when dispatched via `tpl run`
-	AgentMode  bool      `json:"agent_mode"`
 	Status     int       `json:"status,omitempty"`
 	Bytes      int       `json:"bytes,omitempty"`
 	DurationMS int64     `json:"duration_ms"`
@@ -134,7 +133,7 @@ func readAllLines(r io.Reader) ([]string, error) {
 	return lines, s.Err()
 }
 
-// Summary groups recent entries for `audit list`.
+// Summary groups recent entries for `audit summary`.
 type Summary struct {
 	Total     int            `json:"total"`
 	ByHost    map[string]int `json:"by_host"`

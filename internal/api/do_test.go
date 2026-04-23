@@ -65,7 +65,7 @@ func TestDo_OKWritesAuditEntry(t *testing.T) {
 		Method: "GET",
 		URL:    srv.URL + "/thing",
 		Auth:   resolved,
-	}, ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024, Redact: true})
+	}, ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -93,7 +93,7 @@ func TestDo_HTTPErrorClassified(t *testing.T) {
 
 	resolved := testResolved(t, credential.AuthBearer, srv.URL, credential.Secrets{Token: "token-xyz-long"})
 	resp, err := Do(context.Background(), Request{URL: srv.URL + "/missing", Auth: resolved},
-		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024, Redact: true})
+		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 
 	if resp == nil || resp.Status != 404 {
 		t.Fatalf("want 404 response, got %+v", resp)
@@ -120,7 +120,7 @@ func TestDo_SchemeRefusalAuditsError(t *testing.T) {
 		Secrets:    credential.Secrets{Token: "t-long-enough-to-redact"},
 	}
 	resp, err := Do(context.Background(), Request{URL: "http://example.com/", Auth: resolved},
-		ClientOptions{Timeout: 2 * time.Second, MaxBytes: 1024, Redact: true})
+		ClientOptions{Timeout: 2 * time.Second, MaxBytes: 1024})
 	if resp != nil {
 		t.Errorf("scheme refusal should not return a response, got %+v", resp)
 	}
@@ -145,7 +145,7 @@ func TestDo_ResponseTokenEcho_Redacted(t *testing.T) {
 
 	resolved := testResolved(t, credential.AuthBearer, srv.URL, credential.Secrets{Token: "abc-super-secret-long-value"})
 	resp, err := Do(context.Background(), Request{URL: srv.URL, Auth: resolved},
-		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024, Redact: true})
+		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestDo_FormSessionExpiredRefuses(t *testing.T) {
 
 	resolved := testResolved(t, credential.AuthForm, srv.URL, credential.Secrets{})
 	_, err := Do(context.Background(), Request{URL: srv.URL, Auth: resolved},
-		ClientOptions{Timeout: 2 * time.Second, MaxBytes: 1024, Redact: true})
+		ClientOptions{Timeout: 2 * time.Second, MaxBytes: 1024})
 
 	var ae *agenterrors.APIError
 	if !agenterrors.As(err, &ae) || ae.FixableBy != agenterrors.FixableByHuman {
@@ -210,7 +210,7 @@ func TestDo_CookieHarvestingPreservesSensitivity(t *testing.T) {
 
 	resolved := testResolved(t, credential.AuthForm, srv.URL, credential.Secrets{})
 	resp, err := Do(context.Background(), Request{URL: srv.URL, Auth: resolved},
-		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024, Redact: true})
+		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestDo_TruncatedResponseAuditsAgentFixable(t *testing.T) {
 	defer srv.Close()
 
 	resp, err := Do(context.Background(), Request{URL: srv.URL},
-		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024, Redact: true})
+		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 	if resp == nil || !resp.Truncated || len(resp.Body) != 1024 {
 		t.Fatalf("expected truncated resp with len 1024, got %+v (len=%d)", resp, len(resp.Body))
 	}
@@ -284,7 +284,7 @@ func TestDo_JSONBodyRoundtrip(t *testing.T) {
 		Headers: map[string]string{"Content-Type": "application/json"},
 		Body:    strings.NewReader(`{"name":"blue"}`),
 		Auth:    resolved,
-	}, ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024, Redact: true})
+	}, ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 	if err != nil {
 		t.Fatal(err)
 	}

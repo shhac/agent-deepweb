@@ -23,28 +23,23 @@ func registerRun(parent *cobra.Command) {
 	var timeoutMS int
 	var maxBytes int64
 	var format string
-	var allowHTTP bool
 
 	cmd := &cobra.Command{
 		Use:   "run <name>",
 		Short: "Run a template with the given parameters",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := shared.RefuseFlag(allowHTTP, "--allow-http"); err != nil {
-				return shared.Fail(err)
-			}
-			return runTemplate(args[0], params, timeoutMS, maxBytes, format, allowHTTP)
+			return runTemplate(args[0], params, timeoutMS, maxBytes, format)
 		},
 	}
 	cmd.Flags().StringArrayVarP(&params, "param", "p", nil, "Template parameter 'name=value' (repeatable)")
 	cmd.Flags().IntVar(&timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&maxBytes, "max-size", 0, "Max response body size in bytes")
 	cmd.Flags().StringVar(&format, "format", "", "Output format: json, raw, text")
-	cmd.Flags().BoolVar(&allowHTTP, "allow-http", false, "Human-only: permit http:// for this request")
 	parent.AddCommand(cmd)
 }
 
-func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64, formatStr string, allowHTTP bool) error {
+func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64, formatStr string) error {
 	tpl, err := template.Get(name)
 	if err != nil {
 		return shared.Fail(template.ClassifyLookupErr(err, name))
@@ -79,12 +74,10 @@ func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64,
 		Headers:      headers,
 		Body:         body,
 		Auth:         auth,
-		AllowHTTP:    allowHTTP,
 		TemplateName: name,
 	}, api.ClientOptions{
 		Timeout:         timeout,
 		MaxBytes:        maxBytesResolved,
-		Redact:          true,
 		FollowRedirects: true,
 	})
 

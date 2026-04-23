@@ -12,7 +12,15 @@ import (
 // classifyTransport converts a Go transport error into an APIError with
 // the right fixable_by. Timeouts → retry with an explicit timeout hint;
 // DNS/dial errors → retry with a connectivity hint.
+//
+// If the error already IS an *APIError (e.g. our CheckRedirect returned
+// one and Go wrapped it in a *url.Error), unwrap and return it directly
+// so the fixable_by we set there survives the trip out.
 func classifyTransport(err error) *agenterrors.APIError {
+	var ae *agenterrors.APIError
+	if agenterrors.As(err, &ae) {
+		return ae
+	}
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "context deadline exceeded"):

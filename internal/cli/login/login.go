@@ -20,9 +20,9 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Use:   "login <name>",
 		Short: "Run a credential's form-login flow to produce a session (human-only)",
 		Args:  cobra.ExactArgs(1),
-		RunE: shared.HumanOnlyRunE("login", func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			return doLogin(args[0])
-		}),
+		},
 	}
 	login.AddCommand(&cobra.Command{
 		Use:   "llm-help",

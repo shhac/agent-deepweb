@@ -147,7 +147,7 @@ func registerAdd(parent *cobra.Command) {
 		Use:   "add <name>",
 		Short: "Register a new credential (human-only)",
 		Args:  cobra.ExactArgs(1),
-		RunE: shared.HumanOnlyRunE("creds add", func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if o.authType == "" {
 				return shared.Fail(agenterrors.New("--type is required", agenterrors.FixableByAgent).
 					WithHint("Choose one of: bearer, basic, cookie, form, custom"))
@@ -195,7 +195,7 @@ func registerAdd(parent *cobra.Command) {
 				"storage": storage,
 			})
 			return nil
-		}),
+		},
 	}
 	bindAddFlags(cmd, o)
 	parent.AddCommand(cmd)

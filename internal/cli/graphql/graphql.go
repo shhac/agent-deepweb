@@ -86,6 +86,9 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 		}
 		auth = a
 	}
+	// Anonymous requests must opt in via --no-auth; ResolveAuth already
+	// errors when no credential matches, so reaching here means the caller
+	// either picked one explicitly or asked for anonymous on purpose.
 
 	body, err := buildGraphQLPayload(o)
 	if err != nil {
@@ -105,7 +108,6 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 	}, api.ClientOptions{
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
-		Redact:          true,
 		FollowRedirects: true,
 	})
 

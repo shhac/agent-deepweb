@@ -9,10 +9,11 @@ import (
 )
 
 // enforceScheme refuses http:// for auth-attaching credentials unless
-// (a) the host is loopback (dev servers), (b) the credential has
-// AllowHTTP=true, or (c) the per-request perRequestAllow is set. Errors
-// are fixable_by:human since the fix is a human re-registering/consent.
-func enforceScheme(u *url.URL, auth *credential.Resolved, perRequestAllow bool) error {
+// (a) the host is loopback (dev servers) or (b) the credential has
+// AllowHTTP=true (human-set via `creds set-allow-http`). The per-request
+// allow-http flag was removed in v2 — http opt-in is a per-credential
+// property only.
+func enforceScheme(u *url.URL, auth *credential.Resolved) error {
 	if u == nil || auth == nil {
 		return nil
 	}
@@ -25,12 +26,12 @@ func enforceScheme(u *url.URL, auth *credential.Resolved, perRequestAllow bool) 
 	if isLoopback(u.Hostname()) {
 		return nil
 	}
-	if auth.AllowHTTP || perRequestAllow {
+	if auth.AllowHTTP {
 		return nil
 	}
 	return agenterrors.Newf(agenterrors.FixableByHuman,
 		"refusing to send credential %q over http://", auth.Name).
-		WithHint("Credentials travel in cleartext on http://. Ask the user to use https:// or (human-only) run 'agent-deepweb creds set-allow-http " + auth.Name + " true'.")
+		WithHint("Credentials travel in cleartext on http://. Use https:// or run 'agent-deepweb creds set-allow-http " + auth.Name + " true' to opt in for this credential.")
 }
 
 // isLoopback returns true for hosts that are safe to send credentials to
