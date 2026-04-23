@@ -1,0 +1,24 @@
+.DS_Store
+.env
+.env.*
+
+# go
+/agent-deepweb
+/mockdeep
+vendor/
+
+# build
+dist
+release
+
+# local
+.cache
+.tmp
+.ai-cache
+
+# claude
+.claude/*.local.json
+CLAUDE.local.md
+
+# design docs
+design-docs/
