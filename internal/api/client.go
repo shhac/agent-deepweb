@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/shhac/agent-deepweb/internal/audit"
+	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"golang.org/x/net/publicsuffix"
@@ -79,10 +80,10 @@ type ClientOptions struct {
 
 func (c *ClientOptions) applyDefaults() {
 	if c.Timeout == 0 {
-		c.Timeout = 30 * time.Second
+		c.Timeout = time.Duration(config.DefaultTimeoutMS) * time.Millisecond
 	}
 	if c.MaxBytes == 0 {
-		c.MaxBytes = 10 * 1024 * 1024
+		c.MaxBytes = config.DefaultMaxBytes
 	}
 }
 
@@ -105,31 +106,39 @@ func defaultStr(s, d string) string {
 //  3. build http.Request (headers, auth, UA)
 //  4. execute → read capped body → harvest cookies → redact → classify
 //  5. (always) write one audit entry with the outcome
-func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, outErr error) {
+func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error) {
 	opts.applyDefaults()
 	started := time.Now()
 
-	defer auditOnExit(req, started, &resp, &outErr)()
+	var resp *Response
+	var outErr error
+	// Closure captures resp/outErr by reference — a plain defer is enough;
+	// no pointer-to-pointer, no named returns.
+	defer func() { audit.Append(buildAuditEntry(req, started, resp, outErr)) }()
 
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil || parsedURL.Host == "" {
-		return nil, agenterrors.Newf(agenterrors.FixableByAgent,
+		outErr = agenterrors.Newf(agenterrors.FixableByAgent,
 			"URL %q is not absolute", req.URL).
 			WithHint("Use scheme://host/path form")
+		return nil, outErr
 	}
 
 	if err := enforceScheme(parsedURL, req.Auth, req.AllowHTTP); err != nil {
-		return nil, err
+		outErr = err
+		return nil, outErr
 	}
 
 	jar, err := primeCookieJar(req.Auth, parsedURL)
 	if err != nil {
-		return nil, err
+		outErr = err
+		return nil, outErr
 	}
 
 	httpReq, err := buildHTTPRequest(ctx, req)
 	if err != nil {
-		return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent)
+		outErr = agenterrors.Wrap(err, agenterrors.FixableByAgent)
+		return nil, outErr
 	}
 
 	client := &http.Client{Timeout: opts.Timeout, Jar: jar}
@@ -141,13 +150,15 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, classifyTransport(err)
+		outErr = classifyTransport(err)
+		return nil, outErr
 	}
 	defer httpResp.Body.Close() //nolint:errcheck
 
 	body, truncated, err := readCappedBody(httpResp.Body, opts.MaxBytes)
 	if err != nil {
-		return nil, agenterrors.Wrap(err, agenterrors.FixableByRetry)
+		outErr = agenterrors.Wrap(err, agenterrors.FixableByRetry)
+		return nil, outErr
 	}
 
 	newCookieViews := harvestSessionCookies(req.Auth, httpResp, parsedURL)
@@ -181,6 +192,40 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 		return resp, outErr
 	}
 	return resp, nil
+}
+
+// buildAuditEntry converts a Do invocation's inputs + outcome into an
+// audit.Entry. Pure function — all state comes from its args, making the
+// deferred call site in Do trivial to read.
+func buildAuditEntry(req Request, started time.Time, resp *Response, outErr error) audit.Entry {
+	scheme, host, path := audit.FromURL(req.URL)
+	e := audit.Entry{
+		Method:     defaultStr(req.Method, "GET"),
+		Scheme:     scheme,
+		Host:       host,
+		Path:       path,
+		Template:   req.TemplateName,
+		AgentMode:  isAgentMode(),
+		DurationMS: time.Since(started).Milliseconds(),
+	}
+	if req.Auth != nil {
+		e.Credential = req.Auth.Name
+	}
+	if resp != nil {
+		e.Status = resp.Status
+		e.Bytes = len(resp.Body)
+	}
+	if outErr == nil {
+		e.Outcome = "ok"
+	} else {
+		e.Outcome = "error"
+		e.Error = outErr.Error()
+		var ae *agenterrors.APIError
+		if agenterrors.As(outErr, &ae) {
+			e.FixableBy = string(ae.FixableBy)
+		}
+	}
+	return e
 }
 
 // primeCookieJar returns a cookiejar seeded from the credential's session
@@ -247,40 +292,4 @@ func harvestSessionCookies(auth *credential.Resolved, httpResp *http.Response, p
 		}
 	}
 	return added
-}
-
-// auditOnExit returns a deferred closure that writes one audit entry with
-// the outcome of Do. Pulling this out of Do's body keeps the main flow
-// readable.
-func auditOnExit(req Request, started time.Time, resp **Response, outErr *error) func() {
-	return func() {
-		scheme, host, path := audit.FromURL(req.URL)
-		entry := audit.Entry{
-			Method:     defaultStr(req.Method, "GET"),
-			Scheme:     scheme,
-			Host:       host,
-			Path:       path,
-			Template:   req.TemplateName,
-			AgentMode:  isAgentMode(),
-			DurationMS: time.Since(started).Milliseconds(),
-		}
-		if req.Auth != nil {
-			entry.Credential = req.Auth.Name
-		}
-		if resp != nil && *resp != nil {
-			entry.Status = (*resp).Status
-			entry.Bytes = len((*resp).Body)
-		}
-		if *outErr == nil {
-			entry.Outcome = "ok"
-		} else {
-			entry.Outcome = "error"
-			entry.Error = (*outErr).Error()
-			var ae *agenterrors.APIError
-			if agenterrors.As(*outErr, &ae) {
-				entry.FixableBy = string(ae.FixableBy)
-			}
-		}
-		audit.Append(entry)
-	}
 }

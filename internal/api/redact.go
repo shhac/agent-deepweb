@@ -62,44 +62,58 @@ func RedactJSONBody(body []byte, contentType string) []byte {
 	return out
 }
 
-// RedactSecretEcho walks the raw bytes and replaces any substring that exactly
-// matches a secret value held by the Resolved credential. This is belt-and-
-// braces defense: even if a server echoes a token in a field we don't
-// recognise by name, the literal value gets masked on the way out.
-// Only values longer than 4 bytes are considered (skip empty / trivial strings).
+// RedactSecretEcho walks the raw bytes and replaces any substring that
+// exactly matches a secret value held by the Resolved credential. This is
+// belt-and-braces defense: even if a server echoes a token in a field we
+// don't recognise by name, the literal value gets masked on the way out.
+// Only needles longer than 4 bytes are considered — trivial values would
+// false-positive on common body text.
+//
+// For form-auth credentials, also masks the session token and sensitive
+// cookie values. The session is read from disk only when there's any
+// chance it contributes a needle — i.e. for form auth.
 func RedactSecretEcho(body []byte, resolved *credential.Resolved) []byte {
 	if resolved == nil {
 		return body
 	}
+	needles := gatherNeedles(resolved)
+	if len(needles) == 0 {
+		return body
+	}
 	mask := []byte("<redacted>")
-	needles := []string{
-		resolved.Secrets.Token,
-		resolved.Secrets.Password,
-		resolved.Secrets.Cookie,
+	for _, n := range needles {
+		body = bytes.ReplaceAll(body, []byte(n), mask)
 	}
+	return body
+}
+
+// gatherNeedles collects the secret values from resolved.Secrets (+ the
+// form-auth session, if any) that are long enough to redact safely.
+// Short values (≤ 4 bytes) are skipped to avoid false positives.
+func gatherNeedles(resolved *credential.Resolved) []string {
+	var needles []string
+	add := func(s string) {
+		if len(s) > 4 {
+			needles = append(needles, s)
+		}
+	}
+	add(resolved.Secrets.Token)
+	add(resolved.Secrets.Password)
+	add(resolved.Secrets.Cookie)
 	for _, v := range resolved.Secrets.Headers {
-		needles = append(needles, v)
+		add(v)
 	}
-	// Also mask any live session token (form-auth) and sensitive cookies.
 	if resolved.Type == credential.AuthForm {
 		if sess, err := credential.ReadSession(resolved.Name); err == nil {
-			if sess.Token != "" {
-				needles = append(needles, sess.Token)
-			}
+			add(sess.Token)
 			for _, c := range sess.Cookies {
 				if c.Sensitive {
-					needles = append(needles, c.Value)
+					add(c.Value)
 				}
 			}
 		}
 	}
-	for _, n := range needles {
-		if len(n) <= 4 {
-			continue
-		}
-		body = bytes.ReplaceAll(body, []byte(n), mask)
-	}
-	return body
+	return needles
 }
 
 func redactValue(v any) any {

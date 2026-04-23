@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,10 +38,7 @@ import (
 func doLogin(name string) error {
 	resolved, err := credential.Resolve(name)
 	if err != nil {
-		if ae := credential.WrapNotFound(err, name); ae != nil {
-			return shared.Fail(ae)
-		}
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.Fail(credential.ClassifyLookupErr(err, name))
 	}
 	if resolved.Type != credential.AuthForm {
 		return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent,
@@ -98,7 +96,7 @@ func doLogin(name string) error {
 	sess.Expires = computeExpiry(sess, resolved.Secrets.SessionTTL)
 
 	if err := credential.WriteSession(sess); err != nil {
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.FailHuman(err)
 	}
 
 	status, _ := credential.GetSessionStatus(name)
@@ -245,8 +243,7 @@ func extractJSONToken(body []byte, pathDot string) (string, error) {
 		case map[string]any:
 			decoded = val[seg]
 		case []any:
-			var idx int
-			_, err := fmt.Sscanf(seg, "%d", &idx)
+			idx, err := strconv.Atoi(seg)
 			if err != nil || idx < 0 || idx >= len(val) {
 				return "", fmt.Errorf("index %q out of range", seg)
 			}

@@ -5,8 +5,6 @@ import (
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
-	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
-	"github.com/shhac/agent-deepweb/internal/output"
 )
 
 func registerAllow(parent *cobra.Command) {
@@ -77,39 +75,33 @@ func mutateSlice(existing []string, item string, add bool) (updated []string, no
 func mutateDomains(name, domain string, add bool) error {
 	c, err := credential.GetMetadata(name)
 	if err != nil {
-		if ae := credential.WrapNotFound(err, name); ae != nil {
-			return shared.Fail(ae)
-		}
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.Fail(credential.ClassifyLookupErr(err, name))
 	}
 	updated, noop := mutateSlice(c.Domains, domain, add)
 	if noop {
-		output.PrintJSON(map[string]any{"status": "ok", "name": name, "domains": updated, "noop": true})
+		shared.PrintOK(map[string]any{"name": name, "domains": updated, "noop": true})
 		return nil
 	}
 	if err := credential.SetDomains(name, updated); err != nil {
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.FailHuman(err)
 	}
-	output.PrintJSON(map[string]any{"status": "ok", "name": name, "domains": updated})
+	shared.PrintOK(map[string]any{"name": name, "domains": updated})
 	return nil
 }
 
 func mutatePaths(name, pattern string, add bool) error {
 	c, err := credential.GetMetadata(name)
 	if err != nil {
-		if ae := credential.WrapNotFound(err, name); ae != nil {
-			return shared.Fail(ae)
-		}
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.Fail(credential.ClassifyLookupErr(err, name))
 	}
 	updated, noop := mutateSlice(c.Paths, pattern, add)
 	if noop {
-		output.PrintJSON(map[string]any{"status": "ok", "name": name, "paths": updated, "noop": true})
+		shared.PrintOK(map[string]any{"name": name, "paths": updated, "noop": true})
 		return nil
 	}
 	if err := credential.SetPaths(name, updated); err != nil {
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.FailHuman(err)
 	}
-	output.PrintJSON(map[string]any{"status": "ok", "name": name, "paths": updated})
+	shared.PrintOK(map[string]any{"name": name, "paths": updated})
 	return nil
 }

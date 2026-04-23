@@ -19,3 +19,17 @@ func WrapNotFound(err error, name string) *agenterrors.APIError {
 		"credential %q not found", name).
 		WithHint("Run 'agent-deepweb creds list' to see available credentials")
 }
+
+// ClassifyLookupErr converts an error from Resolve/GetMetadata into the
+// standard APIError: NotFound → fixable_by:agent (with hint), anything
+// else → fixable_by:human (wrap). nil error passes through.
+// Callers use this as `return shared.Fail(credential.ClassifyLookupErr(err, name))`.
+func ClassifyLookupErr(err error, name string) error {
+	if err == nil {
+		return nil
+	}
+	if ae := WrapNotFound(err, name); ae != nil {
+		return ae
+	}
+	return agenterrors.Wrap(err, agenterrors.FixableByHuman)
+}

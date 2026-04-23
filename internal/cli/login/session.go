@@ -29,7 +29,7 @@ func registerSession(root *cobra.Command) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			status, err := credential.GetSessionStatus(args[0])
 			if err != nil {
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.FailHuman(err)
 			}
 			output.PrintJSON(status)
 			return nil
@@ -42,7 +42,7 @@ func registerSession(root *cobra.Command) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			show, err := credential.GetSessionShow(args[0])
 			if err != nil {
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.FailHuman(err)
 			}
 			output.PrintJSON(show)
 			return nil
@@ -54,9 +54,9 @@ func registerSession(root *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 		RunE: shared.HumanOnlyRunE("session clear", func(cmd *cobra.Command, args []string) error {
 			if err := credential.ClearSession(args[0]); err != nil {
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.FailHuman(err)
 			}
-			output.PrintJSON(map[string]any{"status": "ok", "name": args[0]})
+			shared.PrintOK(map[string]any{"name": args[0]})
 			return nil
 		}),
 	})
@@ -75,7 +75,7 @@ func registerSession(root *cobra.Command) {
 			}
 			sess.Expires = newExp
 			if err := credential.WriteSession(sess); err != nil {
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.FailHuman(err)
 			}
 			status, _ := credential.GetSessionStatus(args[0])
 			output.PrintJSON(status)
@@ -115,7 +115,7 @@ func markSensitivity(sensitive bool) shared.RunEFunc {
 				"cookie %q not found in session %q", args[1], args[0]))
 		}
 		if err := credential.WriteSession(sess); err != nil {
-			return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+			return shared.FailHuman(err)
 		}
 		show, _ := credential.GetSessionShow(args[0])
 		output.PrintJSON(show)

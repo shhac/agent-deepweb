@@ -27,10 +27,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	resolved, err := credential.Resolve(name)
 	if err != nil {
-		if ae := credential.WrapNotFound(err, name); ae != nil {
-			return shared.Fail(ae)
-		}
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.Fail(credential.ClassifyLookupErr(err, name))
 	}
 	if resolved.Health == "" {
 		return shared.Fail(agenterrors.Newf(agenterrors.FixableByHuman,

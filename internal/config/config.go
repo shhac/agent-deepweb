@@ -19,6 +19,15 @@ type Defaults struct {
 	Redact    bool  `json:"redact,omitempty"`     // apply redaction by default (default: true)
 }
 
+// Default values used when a zero-value TimeoutMS/MaxBytes is encountered.
+// Duplicated nowhere — both config.applyDefaults and api.ClientOptions
+// applyDefaults reference these so the "what's the baseline" answer has
+// exactly one source of truth.
+const (
+	DefaultTimeoutMS = 30_000           // 30s — plenty of slack for most APIs
+	DefaultMaxBytes  = 10 * 1024 * 1024 // 10 MiB response cap
+)
+
 var (
 	cache       *Config
 	cacheMu     sync.Mutex
@@ -103,10 +112,10 @@ func defaultConfig() *Config {
 
 func applyDefaults(cfg *Config) {
 	if cfg.Defaults.TimeoutMS == 0 {
-		cfg.Defaults.TimeoutMS = 30_000
+		cfg.Defaults.TimeoutMS = DefaultTimeoutMS
 	}
 	if cfg.Defaults.MaxBytes == 0 {
-		cfg.Defaults.MaxBytes = 10 * 1024 * 1024
+		cfg.Defaults.MaxBytes = DefaultMaxBytes
 	}
 	// Redact defaults to true. We represent that by having the boolean
 	// only be "false" when explicitly disabled — read callers should call

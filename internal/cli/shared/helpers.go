@@ -24,6 +24,26 @@ func Fail(err error) error {
 	return err
 }
 
+// FailHuman wraps a plain error as fixable_by:human and emits via Fail.
+// Collapses the very common `Fail(errors.Wrap(err, FixableByHuman))`
+// boilerplate that appeared 20+ times across CLI handlers.
+func FailHuman(err error) error { return Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman)) }
+
+// FailAgent wraps a plain error as fixable_by:agent and emits via Fail.
+func FailAgent(err error) error { return Fail(agenterrors.Wrap(err, agenterrors.FixableByAgent)) }
+
+// PrintOK emits the canonical {"status":"ok", ...} success envelope to
+// stdout. Merges extras into the map; extras override "status" if the
+// caller really wants to (rare). Replaces the 15 inline `output.PrintJSON(
+// map[string]any{"status":"ok", "name": n, ...})` sites across the CLI.
+func PrintOK(extras map[string]any) {
+	m := map[string]any{"status": "ok"}
+	for k, v := range extras {
+		m[k] = v
+	}
+	output.PrintJSON(m)
+}
+
 // RunEFunc is cobra's RunE signature, repeated here so wrapper names read
 // nicely.
 type RunEFunc = func(cmd *cobra.Command, args []string) error

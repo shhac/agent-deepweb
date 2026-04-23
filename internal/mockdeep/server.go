@@ -98,6 +98,28 @@ func fail(w http.ResponseWriter, status int, msg string) {
 
 // ---------- endpoints ----------
 
+// Routes returns a human-readable list of routes with their expected
+// credentials. Used by the index handler (served at `GET /`) and by
+// cmd/mockdeep's `flag.Usage` so both stay in sync.
+func Routes() []string {
+	return []string{
+		"GET  /healthz",
+		"GET  /headers",
+		"ANY  /echo",
+		"GET  /whoami            (Bearer " + ValidBearerToken + ")",
+		"GET  /basic             (Basic " + ValidUsername + ":" + ValidPassword + ")",
+		"GET  /api-key           (" + APIKeyHeader + ": " + ValidAPIKey + ")",
+		"POST /login             (form or JSON: username=" + ValidUsername + ", password=" + ValidPassword + ")",
+		"GET  /session           (Cookie session=" + SessionCookie + ")",
+		"GET  /token-protected   (Bearer " + LoginToken + ")",
+		"POST /graphql           (Bearer " + ValidBearerToken + ")",
+		"GET  /status/<code>",
+		"GET  /slow?ms=<n>",
+		"GET  /large?bytes=<n>",
+		"GET  /redirect?to=<path>",
+	}
+}
+
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		fail(w, http.StatusNotFound, "no such route: "+r.URL.Path)
@@ -105,22 +127,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "mockdeep",
-		"routes": []string{
-			"GET  /healthz",
-			"GET  /headers",
-			"ANY  /echo",
-			"GET  /whoami            (Bearer " + ValidBearerToken + ")",
-			"GET  /basic             (Basic " + ValidUsername + ":" + ValidPassword + ")",
-			"GET  /api-key           (" + APIKeyHeader + ": " + ValidAPIKey + ")",
-			"POST /login             (form or JSON: username=" + ValidUsername + ", password=" + ValidPassword + ")",
-			"GET  /session           (Cookie session=" + SessionCookie + ")",
-			"GET  /token-protected   (Bearer " + LoginToken + ")",
-			"POST /graphql           (Bearer " + ValidBearerToken + ")",
-			"GET  /status/<code>",
-			"GET  /slow?ms=<n>",
-			"GET  /large?bytes=<n>",
-			"GET  /redirect?to=<path>",
-		},
+		"routes":  Routes(),
 	})
 }
 

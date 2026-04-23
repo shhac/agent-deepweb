@@ -1,14 +1,16 @@
+// Package fetch implements the `fetch` command (curl-with-auth).
+//
+// File layout:
+//
+//	fetch.go   Register + run orchestrator + writeResponse.
+//	body.go    buildBody + loadBody (--data / --json / --form handling).
+//	flags.go   parseHeaderFlags / parseQueryFlags / chooseMethod.
 package fetch
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/url"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -48,21 +50,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 			return run(args[0], globals(), o)
 		},
 	}
-	cmd.Flags().StringVar(&o.auth, "auth", "", "Credential alias (falls back to --auth on root or env)")
-	cmd.Flags().BoolVar(&o.noAuth, "no-auth", false, "Skip auth even if a credential matches the host")
-	cmd.Flags().StringVarP(&o.method, "method", "X", "", "HTTP method (default GET, or POST if body given)")
-	cmd.Flags().StringArrayVarP(&o.headers, "header", "H", nil, "Extra request header (repeatable)")
-	cmd.Flags().StringArrayVar(&o.queries, "query", nil, "URL query param key=value (repeatable)")
-	cmd.Flags().StringVar(&o.data, "data", "", "Raw body (@file, @- for stdin)")
-	cmd.Flags().StringVar(&o.jsonBody, "json", "", "JSON body (@file, @- for stdin); sets Content-Type")
-	cmd.Flags().StringArrayVar(&o.form, "form", nil, "Form field key=value (repeatable); sets x-www-form-urlencoded")
-	cmd.Flags().IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
-	cmd.Flags().Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
-	cmd.Flags().BoolVar(&o.followRedirects, "follow-redirects", true, "Follow redirects")
-	cmd.Flags().StringVar(&o.format, "format", "", "Output format: json, raw, text")
-	cmd.Flags().BoolVar(&o.noRedact, "no-redact", false, "Human-only: disable response redaction")
-	cmd.Flags().BoolVar(&o.allowHTTP, "allow-http", false, "Human-only: permit http:// for this request (overrides credential default)")
-	cmd.Flags().StringVarP(&o.userAgent, "user-agent", "A", "", "User-Agent for this request (else credential's UA; else agent-deepweb/<version>)")
+	bindFlags(cmd, o)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "llm-help",
@@ -71,6 +59,25 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	})
 
 	root.AddCommand(cmd)
+}
+
+func bindFlags(cmd *cobra.Command, o *opts) {
+	f := cmd.Flags()
+	f.StringVar(&o.auth, "auth", "", "Credential alias (falls back to --auth on root or env)")
+	f.BoolVar(&o.noAuth, "no-auth", false, "Skip auth even if a credential matches the host")
+	f.StringVarP(&o.method, "method", "X", "", "HTTP method (default GET, or POST if body given)")
+	f.StringArrayVarP(&o.headers, "header", "H", nil, "Extra request header (repeatable)")
+	f.StringArrayVar(&o.queries, "query", nil, "URL query param key=value (repeatable)")
+	f.StringVar(&o.data, "data", "", "Raw body (@file, @- for stdin)")
+	f.StringVar(&o.jsonBody, "json", "", "JSON body (@file, @- for stdin); sets Content-Type")
+	f.StringArrayVar(&o.form, "form", nil, "Form field key=value (repeatable); sets x-www-form-urlencoded")
+	f.IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
+	f.Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
+	f.BoolVar(&o.followRedirects, "follow-redirects", true, "Follow redirects")
+	f.StringVar(&o.format, "format", "", "Output format: json, raw, text")
+	f.BoolVar(&o.noRedact, "no-redact", false, "Human-only: disable response redaction")
+	f.BoolVar(&o.allowHTTP, "allow-http", false, "Human-only: permit http:// for this request (overrides credential default)")
+	f.StringVarP(&o.userAgent, "user-agent", "A", "", "User-Agent for this request (else credential's UA; else agent-deepweb/<version>)")
 }
 
 func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
@@ -147,46 +154,6 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 	return nil
 }
 
-func chooseMethod(flag string, hasBody bool) string {
-	m := strings.ToUpper(flag)
-	if m != "" {
-		return m
-	}
-	if hasBody {
-		return "POST"
-	}
-	return "GET"
-}
-
-// parseHeaderFlags converts --header "K: V" strings into a map, failing on
-// malformed entries with fixable_by:agent. Pure — testable in isolation.
-func parseHeaderFlags(raw []string) (map[string]string, error) {
-	headers := map[string]string{}
-	for _, h := range raw {
-		k, v, ok := shared.SplitHeader(h)
-		if !ok {
-			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "malformed --header %q", h).
-				WithHint("Use 'Name: value' format")
-		}
-		headers[k] = v
-	}
-	return headers, nil
-}
-
-// parseQueryFlags turns --query key=value strings into a URL-query map.
-// Values are URL-encoded before storage.
-func parseQueryFlags(raw []string) (map[string][]string, error) {
-	query := map[string][]string{}
-	for _, q := range raw {
-		k, v, err := shared.SplitKV(q, "--query")
-		if err != nil {
-			return nil, err
-		}
-		query[k] = append(query[k], url.QueryEscape(v))
-	}
-	return query, nil
-}
-
 func writeResponse(rawURL string, auth *credential.Resolved, resp *api.Response, format string) {
 	if resp == nil {
 		return
@@ -216,75 +183,4 @@ func writeResponse(rawURL string, auth *credential.Resolved, resp *api.Response,
 		env["new_cookies"] = resp.NewCookies
 	}
 	output.PrintJSON(env)
-}
-
-// buildBody assembles the request body from --data/--json/--form (mutually
-// exclusive). Returns the body reader and a Content-Type string (empty
-// when the caller should not set it).
-func buildBody(o *opts) (io.Reader, string, error) {
-	hasData := o.data != ""
-	hasJSON := o.jsonBody != ""
-	hasForm := len(o.form) > 0
-
-	n := 0
-	for _, b := range []bool{hasData, hasJSON, hasForm} {
-		if b {
-			n++
-		}
-	}
-	if n == 0 {
-		return nil, "", nil
-	}
-	if n > 1 {
-		return nil, "", agenterrors.New("--data / --json / --form are mutually exclusive", agenterrors.FixableByAgent)
-	}
-
-	switch {
-	case hasData:
-		b, err := loadBody(o.data)
-		if err != nil {
-			return nil, "", err
-		}
-		return bytes.NewReader(b), "", nil
-	case hasJSON:
-		b, err := loadBody(o.jsonBody)
-		if err != nil {
-			return nil, "", err
-		}
-		var anyv any
-		if err := json.Unmarshal(b, &anyv); err != nil {
-			return nil, "", agenterrors.Newf(agenterrors.FixableByAgent,
-				"--json is not valid JSON: %s", err.Error()).
-				WithHint("Pass a valid JSON string, @file path, or @- for stdin")
-		}
-		return bytes.NewReader(b), "application/json", nil
-	case hasForm:
-		values := url.Values{}
-		for _, f := range o.form {
-			k, v, err := shared.SplitKV(f, "--form")
-			if err != nil {
-				return nil, "", err
-			}
-			values.Add(k, v)
-		}
-		return strings.NewReader(values.Encode()), "application/x-www-form-urlencoded", nil
-	}
-	return nil, "", nil
-}
-
-// loadBody interprets "@-" as stdin, "@path" as file contents, else literal.
-func loadBody(spec string) ([]byte, error) {
-	switch {
-	case spec == "@-":
-		return io.ReadAll(os.Stdin)
-	case strings.HasPrefix(spec, "@"):
-		data, err := os.ReadFile(spec[1:])
-		if err != nil {
-			return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent).
-				WithHint("Check the path and ensure the file is readable")
-		}
-		return data, nil
-	default:
-		return []byte(spec), nil
-	}
 }

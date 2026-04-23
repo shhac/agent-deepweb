@@ -19,7 +19,6 @@ import (
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
-	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
 )
 
@@ -60,7 +59,7 @@ func registerList(parent *cobra.Command) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			creds, err := credential.List()
 			if err != nil {
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.FailHuman(err)
 			}
 			output.PrintJSON(map[string]any{"credentials": creds})
 			return nil
@@ -76,10 +75,7 @@ func registerShow(parent *cobra.Command) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := credential.GetMetadata(args[0])
 			if err != nil {
-				if ae := credential.WrapNotFound(err, args[0]); ae != nil {
-					return shared.Fail(ae)
-				}
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.Fail(credential.ClassifyLookupErr(err, args[0]))
 			}
 			output.PrintJSON(c)
 			return nil

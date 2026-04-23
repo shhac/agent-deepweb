@@ -184,7 +184,7 @@ func registerAdd(parent *cobra.Command) {
 			}
 			storage, err := credential.Store(c, secrets)
 			if err != nil {
-				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+				return shared.FailHuman(err)
 			}
 			output.PrintJSON(map[string]any{
 				"status":  "ok",
