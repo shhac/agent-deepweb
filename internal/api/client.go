@@ -206,7 +206,7 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 	// Redaction is mandatory in v2 — the layered redactors run on every
 	// response, no opt-out flag. If a human really needs raw output, they
 	// can use curl.
-	headers := RedactHeaders(httpResp.Header)
+	headers := RedactHeaders(httpResp.Header, req.Auth)
 	body = RedactJSONBody(body, contentType)
 	body = RedactSecretEcho(body, req.Auth)
 
@@ -214,7 +214,7 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 	// response side is redacted. The raw BodyBytes stays on the struct
 	// so the envelope can show a byte count instead of the full body
 	// (useful for binary uploads).
-	sentHeaders := RedactHeaders(httpReq.Header)
+	sentHeaders := RedactHeaders(httpReq.Header, req.Auth)
 	reqCT := httpReq.Header.Get("Content-Type")
 	redactedSentBody := RedactJSONBody(append([]byte(nil), sentBody...), reqCT)
 	redactedSentBody = RedactSecretEcho(redactedSentBody, req.Auth)

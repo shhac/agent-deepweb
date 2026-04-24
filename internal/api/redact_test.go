@@ -18,7 +18,7 @@ func TestRedactHeaders_PatternMatches(t *testing.T) {
 	h.Set("X-Custom-Token", "t")
 	h.Set("User-Agent", "agent-deepweb/0.1")
 
-	out := RedactHeaders(h)
+	out := RedactHeaders(h, nil)
 	if out.Get("Content-Type") != "application/json" {
 		t.Error("Content-Type should be untouched")
 	}
@@ -87,5 +87,34 @@ func TestRedactSecretEcho_MasksLiteralValues(t *testing.T) {
 	out = RedactSecretEcho(body, resolved)
 	if !bytes.Contains(out, []byte("x marks")) {
 		t.Errorf("short needle (len<=4) should have been skipped: %s", out)
+	}
+}
+
+// TestRedactHeaders_PerProfileOverrides covers the two override lists
+// on the profile: SensitiveHeaders (force-redact even when the default
+// pattern doesn't match) and VisibleHeaders (force-show even when it
+// does).
+func TestRedactHeaders_PerProfileOverrides(t *testing.T) {
+	h := http.Header{}
+	h.Set("Authorization", "Bearer xxx")                  // default-sensitive
+	h.Set("X-Correlation-ID", "visible-by-default")       // default-visible
+	h.Set("X-My-Weird-Secret", "custom-field-we-want-hidden") // LLM-unfriendly name
+
+	resolved := &credential.Resolved{
+		Credential: credential.Credential{
+			SensitiveHeaders: []string{"X-My-Weird-Secret"},
+			VisibleHeaders:   []string{"Authorization"},
+		},
+	}
+
+	out := RedactHeaders(h, resolved)
+	if out.Get("Authorization") != "Bearer xxx" {
+		t.Errorf("VisibleHeaders override should un-redact Authorization: got %q", out.Get("Authorization"))
+	}
+	if out.Get("X-My-Weird-Secret") != "<redacted>" {
+		t.Errorf("SensitiveHeaders override should redact X-My-Weird-Secret: got %q", out.Get("X-My-Weird-Secret"))
+	}
+	if out.Get("X-Correlation-ID") != "visible-by-default" {
+		t.Errorf("Unrelated header should be untouched: got %q", out.Get("X-Correlation-ID"))
 	}
 }

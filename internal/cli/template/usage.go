@@ -1,4 +1,4 @@
-package tpl
+package templatecli
 
 const usageText = `tpl — parameterised request templates
 

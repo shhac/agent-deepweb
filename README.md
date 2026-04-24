@@ -89,9 +89,9 @@ agent-deepweb fetch https://test.example.com/me --profile none \
 A template is a frozen request shape authored by the human. The LLM can only fill in parameter values.
 
 ```bash
-agent-deepweb tpl import ./templates/github.json
-agent-deepweb tpl run github.get_user --param username=octocat
-agent-deepweb tpl run github.create_issue \
+agent-deepweb template import ./templates/github.json
+agent-deepweb template run github.get_user --param username=octocat
+agent-deepweb template run github.create_issue \
   --param owner=shhac --param repo=x --param title='Oops'
 ```
 
@@ -162,11 +162,11 @@ agent-deepweb llm-help                           Reference card
 agent-deepweb fetch <url> [flags]                HTTP request with auth
 agent-deepweb graphql <url> [flags]              GraphQL POST
 
-agent-deepweb tpl list
-agent-deepweb tpl show <name>
-agent-deepweb tpl run <name> --param k=v         Agent-safe (LLM fills values)
-agent-deepweb tpl import <file>
-agent-deepweb tpl remove <name>
+agent-deepweb template list
+agent-deepweb template show <name>
+agent-deepweb template run <name> --param k=v         Agent-safe (LLM fills values)
+agent-deepweb template import <file>
+agent-deepweb template remove <name>
 
 agent-deepweb profile list
 agent-deepweb profile show <name>
@@ -226,9 +226,9 @@ AGENT_DEEPWEB_AUDIT=off          Disable audit-log writes.
 agent-deepweb llm-help
 agent-deepweb fetch *
 agent-deepweb graphql *
-agent-deepweb tpl run *
-agent-deepweb tpl list
-agent-deepweb tpl show *
+agent-deepweb template run *
+agent-deepweb template list
+agent-deepweb template show *
 agent-deepweb profile list
 agent-deepweb profile show *
 agent-deepweb profile test *

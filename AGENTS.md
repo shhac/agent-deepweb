@@ -63,7 +63,7 @@ internal/
       login.go                      Register wiring
       jar.go                        jar status / show / clear / set-expires / mark-*
       form.go                       doLogin + helpers (the form-login engine)
-    tpl/                            `tpl {list,show,run,import,remove}`
+    tpl/                            `template {list,show,run,import,remove}`
     audit/                          `audit tail / summary`
   config/config.go                  App config I/O + DefaultTimeoutMS / DefaultMaxBytes constants
   credential/                       Profile storage (legacy package name; see note below)
@@ -103,7 +103,7 @@ skills/agent-deepweb/SKILL.md       Claude Code skill definition + permission al
 |------|-------|
 | `fetch` | curl-with-auth. `--profile <name>` or `--profile none`. Optional `--cookiejar <path>` for BYO. |
 | `graphql` | POST with classified GraphQL error envelope. Same `--profile` / `--cookiejar`. |
-| `tpl` | Parameterised request templates. `tpl run` is the LLM-facing verb. |
+| `tpl` | Parameterised request templates. `template run` is the LLM-facing verb. |
 | `profile` | CRUD for profiles. Escalation commands require primary secret re-assertion. `remove` clears the jar too. |
 | `login` / `jar` | Form-login flow + per-profile jar inspection. |
 | `audit` | Inspect the append-only request log. |
@@ -129,7 +129,7 @@ The harness (Claude Code) decides which of these the LLM can run. SKILL.md ships
 - **Per-profile default headers.** Non-secret headers applied to every request (e.g., `Accept: application/vnd.api+json`).
 - **Keychain on macOS** (service `app.paulie.agent-deepweb`); 0600 file fallback elsewhere. Jars on disk at `profiles/<name>/jar.json` (encrypted) or any caller-chosen `--cookiejar` path (plaintext).
 - **Fixable-by hints everywhere.** Every error is `{error, hint, fixable_by}` with `agent | human | retry`.
-- **Request templates.** Fixed method, URL with `{{param}}` placeholders, optional query/headers/body_template, profile binding, typed parameter schema. LLM runs `tpl run <name> --param k=v`; values are coerced and validated *before* any HTTP request. Body substitution is type-preserving (an `int` param becomes a JSON number, not a string).
+- **Request templates.** Fixed method, URL with `{{param}}` placeholders, optional query/headers/body_template, profile binding, typed parameter schema. LLM runs `template run <name> --param k=v`; values are coerced and validated *before* any HTTP request. Body substitution is type-preserving (an `int` param becomes a JSON number, not a string).
 - **Audit log.** Every fetch/graphql/tpl-run writes one JSONL entry to `~/.config/agent-deepweb/audit.log` with method, host, path, profile name, BYO jar path, template name, status, bytes, duration, and `outcome`+`fixable_by` on errors. Tripwires: `AnonymousCount` (every `--profile none`), `ByJarPath` (every BYO jar). Never includes bodies, headers, or query strings. Opt out via `AGENT_DEEPWEB_AUDIT=off`.
 - **User-Agent precedence.** per-request `--user-agent` > profile's UA > `User-Agent` request header > `AGENT_DEEPWEB_USER_AGENT` env > `agent-deepweb/<version>` (curl-style).
 - **Single binary, pure Go.** `CGO_ENABLED=0`; deps: cobra, `golang.org/x/net/publicsuffix`.

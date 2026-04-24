@@ -45,6 +45,19 @@ type Credential struct {
 	Notes          string            `json:"notes,omitempty"`
 	AllowHTTP      bool              `json:"allow_http,omitempty"` // permit http:// (not just https://); human-set
 	Storage        string            `json:"storage,omitempty"`    // "keychain" or "file"
+
+	// SensitiveHeaders is a per-profile override: any header name here
+	// (case-insensitive) is redacted in envelope/track output even when
+	// the default headerRedactPattern didn't match. Used for custom
+	// auth-bearing headers whose names we don't recognise
+	// generically (e.g. `X-Customer-Token`).
+	SensitiveHeaders []string `json:"sensitive_headers,omitempty"`
+
+	// VisibleHeaders is the inverse: force a header name to be SHOWN
+	// even when the default regex marked it sensitive. Widening an
+	// LLM's view is escalation, so setting this requires --passphrase
+	// via `profile mark-header-visible`.
+	VisibleHeaders []string `json:"visible_headers,omitempty"`
 }
 
 // Secrets holds the actual secret material for a credential. This struct
@@ -156,16 +169,18 @@ func PrimarySecretFlagHint(authType string) string {
 // in a sibling file keyed by Name. Secret values never appear in this
 // struct.
 type indexEntry struct {
-	Name            string            `json:"name"`
-	Type            string            `json:"type"`
-	Domains         []string          `json:"domains"`
-	Paths           []string          `json:"paths,omitempty"`
-	DefaultHeaders  map[string]string `json:"default_headers,omitempty"`
-	UserAgent       string            `json:"user_agent,omitempty"`
-	Health          string            `json:"health,omitempty"`
-	Notes           string            `json:"notes,omitempty"`
-	AllowHTTP       bool              `json:"allow_http,omitempty"`
-	KeychainManaged bool              `json:"keychain_managed,omitempty"`
+	Name             string            `json:"name"`
+	Type             string            `json:"type"`
+	Domains          []string          `json:"domains"`
+	Paths            []string          `json:"paths,omitempty"`
+	DefaultHeaders   map[string]string `json:"default_headers,omitempty"`
+	UserAgent        string            `json:"user_agent,omitempty"`
+	Health           string            `json:"health,omitempty"`
+	Notes            string            `json:"notes,omitempty"`
+	AllowHTTP        bool              `json:"allow_http,omitempty"`
+	SensitiveHeaders []string          `json:"sensitive_headers,omitempty"`
+	VisibleHeaders   []string          `json:"visible_headers,omitempty"`
+	KeychainManaged  bool              `json:"keychain_managed,omitempty"`
 }
 
 func entryToCredential(e indexEntry) Credential {
@@ -174,16 +189,18 @@ func entryToCredential(e indexEntry) Credential {
 		storage = "keychain"
 	}
 	return Credential{
-		Name:           e.Name,
-		Type:           e.Type,
-		Domains:        e.Domains,
-		Paths:          e.Paths,
-		DefaultHeaders: e.DefaultHeaders,
-		UserAgent:      e.UserAgent,
-		Health:         e.Health,
-		Notes:          e.Notes,
-		AllowHTTP:      e.AllowHTTP,
-		Storage:        storage,
+		Name:             e.Name,
+		Type:             e.Type,
+		Domains:          e.Domains,
+		Paths:            e.Paths,
+		DefaultHeaders:   e.DefaultHeaders,
+		UserAgent:        e.UserAgent,
+		Health:           e.Health,
+		Notes:            e.Notes,
+		AllowHTTP:        e.AllowHTTP,
+		SensitiveHeaders: e.SensitiveHeaders,
+		VisibleHeaders:   e.VisibleHeaders,
+		Storage:          storage,
 	}
 }
 
@@ -192,14 +209,16 @@ func entryToCredential(e indexEntry) Credential {
 // where the secret ended up).
 func entryFromCredential(c Credential) indexEntry {
 	return indexEntry{
-		Name:           c.Name,
-		Type:           c.Type,
-		Domains:        c.Domains,
-		Paths:          c.Paths,
-		DefaultHeaders: c.DefaultHeaders,
-		UserAgent:      c.UserAgent,
-		Health:         c.Health,
-		Notes:          c.Notes,
-		AllowHTTP:      c.AllowHTTP,
+		Name:             c.Name,
+		Type:             c.Type,
+		Domains:          c.Domains,
+		Paths:            c.Paths,
+		DefaultHeaders:   c.DefaultHeaders,
+		UserAgent:        c.UserAgent,
+		Health:           c.Health,
+		Notes:            c.Notes,
+		AllowHTTP:        c.AllowHTTP,
+		SensitiveHeaders: c.SensitiveHeaders,
+		VisibleHeaders:   c.VisibleHeaders,
 	}
 }

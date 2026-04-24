@@ -59,6 +59,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	registerSetUserAgent(cmd)
 	registerSetSecret(cmd)
 	registerSetPassphrase(cmd)
+	registerMarkHeader(cmd)
 
 	root.AddCommand(cmd)
 }

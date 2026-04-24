@@ -7,7 +7,7 @@
 //	          validation, URL/header/body expansion, credential resolution,
 //	          and dispatch to api.Do.
 //	body.go   buildTemplateBody — the json/form/raw body encoder.
-package tpl
+package templatecli
 
 import (
 	"fmt"
@@ -22,13 +22,13 @@ import (
 
 func Register(root *cobra.Command, _ shared.Globals) {
 	cmd := &cobra.Command{
-		Use:   "tpl",
+		Use:   "template",
 		Short: "Parameterised request templates (highest-safety mode)",
 	}
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "llm-help",
-		Short: "Show detailed reference for tpl",
+		Short: "Show detailed reference for template",
 		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
 	})
 

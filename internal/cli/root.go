@@ -12,7 +12,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/cli/graphql"
 	"github.com/shhac/agent-deepweb/internal/cli/login"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
-	"github.com/shhac/agent-deepweb/internal/cli/tpl"
+	templatecli "github.com/shhac/agent-deepweb/internal/cli/template"
 )
 
 var (
@@ -53,7 +53,7 @@ func newRootCmd(version string) *cobra.Command {
 	profile.Register(root, allGlobals)
 	login.Register(root, allGlobals)
 	audit.Register(root, allGlobals)
-	tpl.Register(root, allGlobals)
+	templatecli.Register(root, allGlobals)
 
 	return root
 }

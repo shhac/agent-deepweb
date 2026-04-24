@@ -25,20 +25,50 @@ var bodyFieldRedactPattern = regexp.MustCompile(
 )
 
 // RedactHeaders returns a copy of h with sensitive headers replaced by "<redacted>".
-func RedactHeaders(h http.Header) http.Header {
+//
+// The default pattern (headerRedactPattern) always applies. When
+// resolved is non-nil, the profile's SensitiveHeaders list is an
+// additional OR (force-redact) and VisibleHeaders is a subtraction
+// (force-show, even if the default pattern matched). Both per-profile
+// lists match case-insensitively on exact header names.
+func RedactHeaders(h http.Header, resolved *credential.Resolved) http.Header {
+	sensitiveOverride, visibleOverride := perProfileHeaderOverrides(resolved)
 	out := make(http.Header, len(h))
 	for k, vs := range h {
-		if headerRedactPattern.MatchString(k) {
+		lk := strings.ToLower(k)
+		switch {
+		case visibleOverride[lk]:
+			// Human explicitly marked this visible (escalation-gated).
+			out[k] = append([]string(nil), vs...)
+		case sensitiveOverride[lk] || headerRedactPattern.MatchString(k):
 			redacted := make([]string, len(vs))
 			for i := range vs {
 				redacted[i] = "<redacted>"
 			}
 			out[k] = redacted
-			continue
+		default:
+			out[k] = append([]string(nil), vs...)
 		}
-		out[k] = append([]string(nil), vs...)
 	}
 	return out
+}
+
+// perProfileHeaderOverrides lowercases the profile's
+// SensitiveHeaders/VisibleHeaders into lookup maps. Returns empty
+// maps when resolved is nil so the default pattern is the only rule.
+func perProfileHeaderOverrides(resolved *credential.Resolved) (sensitive, visible map[string]bool) {
+	sensitive = map[string]bool{}
+	visible = map[string]bool{}
+	if resolved == nil {
+		return
+	}
+	for _, h := range resolved.SensitiveHeaders {
+		sensitive[strings.ToLower(h)] = true
+	}
+	for _, h := range resolved.VisibleHeaders {
+		visible[strings.ToLower(h)] = true
+	}
+	return
 }
 
 // RedactJSONBody walks the body as JSON. If it's an object (or nested),

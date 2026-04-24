@@ -1,5 +1,5 @@
 // Package track persists opt-in full-fidelity request/response records
-// that `fetch`/`graphql`/`tpl run` produce when the `--track` flag is
+// that `fetch`/`graphql`/`template run` produce when the `--track` flag is
 // set. The audit log (internal/audit) records only lightweight metadata
 // per request; tracked records additionally include the redacted
 // request headers/body and response headers/body, so a human can

@@ -24,8 +24,8 @@ agent-deepweb profile show <name>            # Metadata for one profile
 agent-deepweb profile test <name>            # Send a health-check request
 agent-deepweb jar status <name>              # Cookie count, expiry, has-token
 agent-deepweb jar show <name>                # Cookies (sensitive values redacted)
-agent-deepweb tpl list                       # Available request templates
-agent-deepweb tpl show <name>                # Full template definition
+agent-deepweb template list                       # Available request templates
+agent-deepweb template show <name>                # Full template definition
 agent-deepweb audit tail -n 50               # Recent requests
 agent-deepweb audit summary                  # Group recent activity
 ```
@@ -62,7 +62,7 @@ agent-deepweb graphql https://api.github.com/graphql \
 When the user has registered a template, you can ONLY fill in parameter values:
 
 ```bash
-agent-deepweb tpl run github.get_user --param username=octocat
+agent-deepweb template run github.get_user --param username=octocat
 ```
 
 Method, URL shape, headers, profile binding, and body shape are all frozen by the template. You cannot change them.
@@ -142,9 +142,9 @@ Allow:
   agent-deepweb llm-help
   agent-deepweb fetch *
   agent-deepweb graphql *
-  agent-deepweb tpl run *
-  agent-deepweb tpl list
-  agent-deepweb tpl show *
+  agent-deepweb template run *
+  agent-deepweb template list
+  agent-deepweb template show *
   agent-deepweb profile list
   agent-deepweb profile show *
   agent-deepweb profile test *
@@ -157,7 +157,7 @@ Deny (or simply not allowlisted):
   agent-deepweb profile add|remove|allow|allow-path|disallow|disallow-path|set-*
   agent-deepweb login *
   agent-deepweb jar clear|set-expires|mark-*
-  agent-deepweb tpl import|remove
+  agent-deepweb template import|remove
   Direct reads of ~/.config/agent-deepweb/  (so the encrypted jar + secrets file are off-limits via shell)
 ```
 

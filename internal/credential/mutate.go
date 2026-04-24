@@ -34,6 +34,21 @@ func SetAllowHTTP(name string, allow bool) error {
 	return mutateEntry(name, func(e *indexEntry) { e.AllowHTTP = allow })
 }
 
+// SetSensitiveHeaders replaces the per-profile "force redact" header list.
+// Header names are stored as supplied; the redactor compares case-
+// insensitively on the way out.
+func SetSensitiveHeaders(name string, headers []string) error {
+	return mutateEntry(name, func(e *indexEntry) { e.SensitiveHeaders = headers })
+}
+
+// SetVisibleHeaders replaces the per-profile "force visible" header list.
+// Header names are stored as supplied; the redactor compares case-
+// insensitively on the way out. Widening visibility is escalation — the
+// CLI layer gates this behind --passphrase.
+func SetVisibleHeaders(name string, headers []string) error {
+	return mutateEntry(name, func(e *indexEntry) { e.VisibleHeaders = headers })
+}
+
 // mutateEntry loads the index, applies fn to the named entry, and writes
 // it back. Returns NotFoundError if the credential doesn't exist.
 func mutateEntry(name string, fn func(*indexEntry)) error {

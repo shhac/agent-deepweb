@@ -15,12 +15,18 @@ SUBCOMMANDS (agent-safe — read-only or non-escalating)
   list                                    All profiles (no secrets)
   show <name>                             Metadata for one profile
   test <name>                             Send a request to the profile's health URL
-  remove <name>                           Delete profile + secrets + jar
+  remove <name>                           Delete profile + secrets + jar + tracked records
   disallow <name> <domain>                Narrow allowlist (no escalation)
   disallow-path <name> <pattern>          Narrow path allowlist (no escalation)
   unset-default-header <name> <key>       Remove a default header
   set-health <name> <url>                 Set the health-check URL
   set-user-agent <name> <ua>              Set per-profile User-Agent
+  mark-header-sensitive <name> <h> [...]  Force redact headers beyond the built-in regex
+
+RELATED — COOKIE JAR (see 'agent-deepweb login llm-help' for full details)
+  jar status <name>                       Cookie count / expiry / has-token summary
+  jar show <name>                         Cookies (sensitive values redacted)
+  jar clear <name>                        Empty the jar (reset session state)
 
 SUBCOMMANDS (HUMAN-ONLY — escalation; require --passphrase)
   add <name> --type <t> --domain <d> [...]  Register a new profile
@@ -30,6 +36,7 @@ SUBCOMMANDS (HUMAN-ONLY — escalation; require --passphrase)
   set-allow-http <name> true --passphrase <p>  Permit http:// for this profile
   set-secret <name> --passphrase <p> [new-secret flags]  Rotate the primary secret
   set-passphrase <name> --passphrase <p> --new-passphrase <n>  Rotate just the passphrase
+  mark-header-visible <name> <h> [...] --passphrase <p>  Force-show headers the default regex redacts
 
 THE PASSPHRASE
   Every escalation requires --passphrase, which is constant-time
