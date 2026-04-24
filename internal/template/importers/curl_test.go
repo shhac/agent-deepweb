@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"strings"
 	"testing"
 
@@ -18,7 +20,7 @@ func TestImportCurl_GETSimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("x.list")
+	got, _ := template.Get("x.list")
 	if got.Method != "GET" || got.URL != "https://api.example.com/items" {
 		t.Errorf("template: %+v", got)
 	}
@@ -40,7 +42,7 @@ func TestImportCurl_POSTWithJSONBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("x.create")
+	got, _ := template.Get("x.create")
 	if got.Method != "POST" {
 		t.Errorf("method: %q", got.Method)
 	}
@@ -66,7 +68,7 @@ func TestImportCurl_DefaultsMethodToPOSTWithBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("y.post")
+	got, _ := template.Get("y.post")
 	if got.Method != "POST" {
 		t.Errorf("method should default to POST when body present; got %q", got.Method)
 	}
@@ -88,7 +90,7 @@ func TestImportCurl_IgnoresNoisyFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("z.ping")
+	got, _ := template.Get("z.ping")
 	if got.Method != "GET" || got.URL != "https://api.example.com/ping" {
 		t.Errorf("template: %+v", got)
 	}
@@ -108,7 +110,7 @@ func TestImportCurl_JsonFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("j.create")
+	got, _ := template.Get("j.create")
 	if got.Method != "POST" {
 		t.Errorf("--json should imply POST; got %q", got.Method)
 	}
@@ -127,7 +129,7 @@ func TestImportCurl_UrlencodedBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("f.login")
+	got, _ := template.Get("f.login")
 	if got.BodyFormat != "form" {
 		t.Errorf("k=v body should sniff as form: %q", got.BodyFormat)
 	}
@@ -148,7 +150,7 @@ func TestImportCurl_QueryStringLift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("q.search")
+	got, _ := template.Get("q.search")
 	if strings.Contains(got.URL, "?") {
 		t.Errorf("URL should not carry query: %q", got.URL)
 	}
@@ -218,7 +220,7 @@ func TestImportCurl_EqualsFlagForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("eq.flag")
+	got, _ := template.Get("eq.flag")
 	if got.Headers["X-Trace"] != "1" {
 		t.Errorf("equals-form header: %+v", got.Headers)
 	}

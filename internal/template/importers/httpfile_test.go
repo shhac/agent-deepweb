@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"strings"
 	"testing"
 
@@ -39,7 +41,7 @@ GET {{baseUrl}}/healthz
 		t.Fatalf("want 3 imports, got %d: %v", len(imported), imported)
 	}
 
-	list, err := Get("h.list_users")
+	list, err := template.Get("h.list_users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +60,7 @@ GET {{baseUrl}}/healthz
 	}
 
 	// Named block: the ### trailing name becomes the leaf name.
-	named, err := Get("h.named-op")
+	named, err := template.Get("h.named-op")
 	if err != nil {
 		t.Fatalf("h.named-op: %v (imported=%v)", err, imported)
 	}
@@ -84,7 +86,7 @@ Content-Type: application/json
 	if _, err := ImportHTTPText(text, ImportHTTPFileOptions{Prefix: "h"}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("h.create")
+	got, _ := template.Get("h.create")
 	if got.BodyFormat != "json" {
 		t.Errorf("body_format: %q", got.BodyFormat)
 	}
@@ -106,7 +108,7 @@ u=alice&p=secret
 	if _, err := ImportHTTPText(text, ImportHTTPFileOptions{Prefix: "h"}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := Get("h.login")
+	got, _ := template.Get("h.login")
 	if got.BodyFormat != "form" {
 		t.Errorf("body_format: %q", got.BodyFormat)
 	}

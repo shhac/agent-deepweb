@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"strings"
 	"testing"
 
@@ -75,7 +77,7 @@ func TestImportPostman_CoreShapes(t *testing.T) {
 	}
 
 	// Nested folder flattens into the name.
-	getUser, err := Get("mc.users_get_user")
+	getUser, err := template.Get("mc.users_get_user")
 	if err != nil {
 		t.Fatalf("mc.users_get_user: %v", err)
 	}
@@ -96,7 +98,7 @@ func TestImportPostman_CoreShapes(t *testing.T) {
 		t.Errorf("headers: %+v", getUser.Headers)
 	}
 
-	// ParamSpec emitted for every {{placeholder}} seen across URL/headers/body.
+	// template.ParamSpec emitted for every {{placeholder}} seen across URL/headers/body.
 	wantParams := []string{"baseUrl", "apiVersion", "userId", "expand"}
 	for _, p := range wantParams {
 		if _, ok := getUser.Parameters[p]; !ok {
@@ -123,7 +125,7 @@ func TestImportPostman_UrlObjectShape(t *testing.T) {
 	if _, err := ImportPostman([]byte(postmanMinimal), ImportPostmanOptions{Prefix: "x"}); err != nil {
 		t.Fatal(err)
 	}
-	create, err := Get("x.users_create_user")
+	create, err := template.Get("x.users_create_user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,13 +207,13 @@ func TestImportPostman_BodyModes(t *testing.T) {
 	}
 
 	t.Run("raw text → body_format=raw", func(t *testing.T) {
-		got, _ := Get("b.raw-text")
+		got, _ := template.Get("b.raw-text")
 		if got.BodyFormat != "raw" {
 			t.Errorf("body_format: %q (raw text should use raw format)", got.BodyFormat)
 		}
 	})
 	t.Run("urlencoded → body_format=form, disabled kv dropped", func(t *testing.T) {
-		got, _ := Get("b.urlencoded")
+		got, _ := template.Get("b.urlencoded")
 		if got.BodyFormat != "form" {
 			t.Errorf("body_format: %q", got.BodyFormat)
 		}
@@ -220,7 +222,7 @@ func TestImportPostman_BodyModes(t *testing.T) {
 		}
 	})
 	t.Run("graphql → body_format=json with query wrapper", func(t *testing.T) {
-		got, _ := Get("b.graphql")
+		got, _ := template.Get("b.graphql")
 		if got.BodyFormat != "json" {
 			t.Errorf("body_format: %q", got.BodyFormat)
 		}

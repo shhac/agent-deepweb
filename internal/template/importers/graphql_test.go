@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"strings"
 	"testing"
 )
@@ -123,7 +125,7 @@ func TestSchema_BuildTemplates(t *testing.T) {
 	if len(tpls) != 3 {
 		t.Fatalf("want 3 templates, got %d: %+v", len(tpls), names(tpls))
 	}
-	byName := map[string]Template{}
+	byName := map[string]template.Template{}
 	for _, tpl := range tpls {
 		byName[tpl.Name] = tpl
 	}
@@ -142,7 +144,7 @@ func TestSchema_BuildTemplates(t *testing.T) {
 		t.Errorf("body_format: %q", user.BodyFormat)
 	}
 
-	// Required non-null arg → ParamSpec.Required, type from SCALAR ID → string.
+	// Required non-null arg → template.ParamSpec.Required, type from SCALAR ID → string.
 	idSpec := user.Parameters["id"]
 	if !idSpec.Required || idSpec.Type != "string" {
 		t.Errorf("id param: %+v", idSpec)
@@ -229,7 +231,7 @@ func TestRenderTypeRef_NestedList(t *testing.T) {
 	}
 }
 
-func names(ts []Template) []string {
+func names(ts []template.Template) []string {
 	out := make([]string, len(ts))
 	for i, t := range ts {
 		out[i] = t.Name

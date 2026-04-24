@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -44,7 +46,7 @@ func TestGraphQL_E2E_IntrospectionAndRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	byName := map[string]Template{}
+	byName := map[string]template.Template{}
 	for _, tpl := range tpls {
 		byName[tpl.Name] = tpl
 	}
@@ -97,13 +99,13 @@ func TestGraphQL_E2E_IntrospectionAndRun(t *testing.T) {
 // Lives beside the OpenAPI runner in this file rather than in a shared
 // helper because the GraphQL case needs the specific Content-Type and
 // isn't driven by body_format alone.
-func runGraphQLTemplate(t *testing.T, tpl *Template, rawParams map[string]string, auth *credential.Resolved) *api.Response {
+func runGraphQLTemplate(t *testing.T, tpl *template.Template, rawParams map[string]string, auth *credential.Resolved) *api.Response {
 	t.Helper()
 	typed, err := tpl.Validate(rawParams)
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	body, err := SubstituteBody(tpl.BodyTemplate, typed)
+	body, err := template.SubstituteBody(tpl.BodyTemplate, typed)
 	if err != nil {
 		t.Fatalf("substitute body: %v", err)
 	}
@@ -165,7 +167,7 @@ func bearerProfile(t *testing.T, base string) *credential.Resolved {
 // graphql_test.go file (same package, but the helper lives in a
 // _test file which can't be cross-referenced outside tests anyway —
 // this keeps the file self-contained).
-func namesList(ts []Template) []string {
+func namesList(ts []template.Template) []string {
 	out := make([]string, len(ts))
 	for i, t := range ts {
 		out[i] = t.Name

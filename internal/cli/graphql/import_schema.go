@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/template"
+	"github.com/shhac/agent-deepweb/internal/template/importers"
 )
 
 // registerImportSchema wires `graphql import-schema <endpoint>`. Lives
@@ -73,12 +74,12 @@ func registerImportSchema(parent *cobra.Command) {
 					WithHint("Check the endpoint URL + that the profile has rights to introspect (some servers disable introspection in production)"))
 			}
 
-			schema, err := template.ParseGraphQLSchema(resp.Body)
+			schema, err := importers.ParseGraphQLSchema(resp.Body)
 			if err != nil {
 				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman).
 					WithHint("Server may have introspection disabled, or returned a non-standard envelope"))
 			}
-			tpls, err := schema.BuildTemplates(endpoint, template.ImportGraphQLOptions{
+			tpls, err := schema.BuildTemplates(endpoint, importers.ImportGraphQLOptions{
 				Prefix:  prefix,
 				Profile: profileNameOrEmpty(profile),
 				Only:    only,
@@ -118,7 +119,7 @@ func registerImportSchema(parent *cobra.Command) {
 // introspectionBody returns the JSON-encoded GraphQL body for the
 // standard introspection query.
 func introspectionBody() []byte {
-	b, _ := json.Marshal(map[string]string{"query": template.IntrospectionQuery})
+	b, _ := json.Marshal(map[string]string{"query": importers.IntrospectionQuery})
 	return b
 }
 

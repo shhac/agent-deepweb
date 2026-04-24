@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,7 +47,7 @@ func TestImport_AllFormats_E2E(t *testing.T) {
 		if len(imported) != 1 {
 			t.Fatalf("want 1 import, got %v", imported)
 		}
-		tpl, _ := Get(imported[0])
+		tpl, _ := template.Get(imported[0])
 		resp := runTemplate(t, tpl, nil, auth)
 		if resp.Status != 200 {
 			t.Errorf("postman template run status: %d body=%s", resp.Status, resp.Body)
@@ -72,7 +74,7 @@ func TestImport_AllFormats_E2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ImportHAR: %v", err)
 		}
-		tpl, _ := Get(imported[0])
+		tpl, _ := template.Get(imported[0])
 		// The stale Authorization should NOT be carried forward.
 		if _, leaked := tpl.Headers["Authorization"]; leaked {
 			t.Errorf("HAR import leaked auth header: %+v", tpl.Headers)
@@ -92,7 +94,7 @@ Accept: application/json
 		if err != nil {
 			t.Fatalf("ImportHTTPText: %v", err)
 		}
-		tpl, _ := Get(imported[0])
+		tpl, _ := template.Get(imported[0])
 		resp := runTemplate(t, tpl, nil, auth)
 		if resp.Status != 200 {
 			t.Errorf(".http template run status: %d", resp.Status)
@@ -105,7 +107,7 @@ Accept: application/json
 		if err != nil {
 			t.Fatalf("ImportCurl: %v", err)
 		}
-		tpl, _ := Get("cc.ping")
+		tpl, _ := template.Get("cc.ping")
 		resp := runTemplate(t, tpl, nil, auth)
 		if resp.Status != 200 {
 			t.Errorf("curl template run status: %d", resp.Status)
@@ -137,7 +139,7 @@ Accept: application/json
 		if err != nil {
 			t.Fatalf("ImportPostman: %v", err)
 		}
-		tpl, _ := Get(imported[0])
+		tpl, _ := template.Get(imported[0])
 		resp := runTemplate(t, tpl, map[string]any{"value": "hi"}, auth)
 		if resp.Status != 200 {
 			t.Fatalf("postman POST status: %d", resp.Status)
@@ -153,7 +155,7 @@ Accept: application/json
 		if _, err := ImportCurl(cmd, ImportCurlOptions{Name: "cc.echo"}); err != nil {
 			t.Fatalf("ImportCurl: %v", err)
 		}
-		tpl, _ := Get("cc.echo")
+		tpl, _ := template.Get("cc.echo")
 		resp := runTemplate(t, tpl, nil, auth)
 		if resp.Status != 200 {
 			t.Fatalf("curl POST status: %d", resp.Status)
@@ -185,7 +187,7 @@ GET %s/healthz
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpl, _ := Get(imported[0])
+	tpl, _ := template.Get(imported[0])
 	resp := runTemplate(t, tpl, nil, auth)
 	if resp.Status != 200 {
 		t.Errorf("file import status: %d", resp.Status)

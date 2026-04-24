@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"strings"
 	"testing"
 
@@ -67,7 +69,7 @@ func TestImportOpenAPI_CoreShapes(t *testing.T) {
 	}
 
 	// Placeholder rewrite: /users/{id} → /users/{{id}}
-	got, err := Get("myapi.getuser")
+	got, err := template.Get("myapi.getuser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,7 @@ func TestImportOpenAPI_RequestBodyBecomesObjectParam(t *testing.T) {
 	if _, err := ImportOpenAPI([]byte(minimalSpec), ImportOpenAPIOptions{Prefix: "x"}); err != nil {
 		t.Fatal(err)
 	}
-	created, err := Get("x.createuser")
+	created, err := template.Get("x.createuser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +165,7 @@ func TestImportOpenAPI_ServerOverride_ReplacesSpecURL(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Get("staging.healthz")
+	got, err := template.Get("staging.healthz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +233,7 @@ func TestImportOpenAPI_AcceptsSwaggerV2(t *testing.T) {
 	if len(imported) != 2 {
 		t.Errorf("want 2 imports, got %v", imported)
 	}
-	got, err := Get("v2api.getpet")
+	got, err := template.Get("v2api.getpet")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +247,7 @@ func TestImportOpenAPI_AcceptsSwaggerV2(t *testing.T) {
 		t.Errorf("verbose: %+v", got.Parameters["verbose"])
 	}
 	// createPet routes through requestBody → body object param.
-	create, err := Get("v2api.createpet")
+	create, err := template.Get("v2api.createpet")
 	if err != nil {
 		t.Fatal(err)
 	}

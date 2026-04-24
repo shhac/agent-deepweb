@@ -5,7 +5,7 @@ import (
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
-	"github.com/shhac/agent-deepweb/internal/template"
+	"github.com/shhac/agent-deepweb/internal/template/importers"
 )
 
 // registerImportOpenAPI wires `template import-openapi <spec>`. Distinct

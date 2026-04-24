@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -21,7 +23,7 @@ type ImportHAROptions struct {
 	Dedupe      bool   // collapse duplicate (method,url,body-shape) → one
 }
 
-// ImportHARFile reads a HAR 1.2 JSON file and stores one Template per
+// ImportHARFile reads a HAR 1.2 JSON file and stores one template.Template per
 // log.entries[]. See ImportHAR for the mapping rules.
 func ImportHARFile(path string, opts ImportHAROptions) ([]string, error) {
 	data, err := os.ReadFile(path)
@@ -66,7 +68,7 @@ func ImportHAR(data []byte, opts ImportHAROptions) ([]string, error) {
 			}
 			seen[key] = true
 		}
-		if err := Store(tpl); err != nil {
+		if err := template.Store(tpl); err != nil {
 			return imported, err
 		}
 		imported = append(imported, tpl.Name)
@@ -131,17 +133,17 @@ var stripHeaders = map[string]bool{
 	"user-agent":          true, // profile's UA / per-request --user-agent wins
 }
 
-func harEntryToTemplate(e harEntry, opts ImportHAROptions, idx int, counters map[string]int) (Template, error) {
+func harEntryToTemplate(e harEntry, opts ImportHAROptions, idx int, counters map[string]int) (template.Template, error) {
 	req := e.Request
 	if req.URL == "" || req.Method == "" {
-		return Template{}, fmt.Errorf("entry %d: missing url or method", idx)
+		return template.Template{}, fmt.Errorf("entry %d: missing url or method", idx)
 	}
 	parsed, err := url.Parse(req.URL)
 	if err != nil {
-		return Template{}, fmt.Errorf("entry %d: bad url: %w", idx, err)
+		return template.Template{}, fmt.Errorf("entry %d: bad url: %w", idx, err)
 	}
 
-	// Base URL (no query) lands in Template.URL; queryString params go
+	// Base URL (no query) lands in template.Template.URL; queryString params go
 	// into Query so they're visible as independent parameters.
 	base := *parsed
 	base.RawQuery = ""
@@ -181,17 +183,13 @@ func harEntryToTemplate(e harEntry, opts ImportHAROptions, idx int, counters map
 		bodyFormat, bodyTemplate = harPostDataToTemplate(*req.PostData)
 	}
 
-	// Name: <prefix>.<method>_<path-slug>. Duplicates disambiguated via
-	// a per-name counter so a single HAR with 5 requests to /api/items
-	// produces 5 distinct templates.
+	// Name: <prefix>.<method>_<path-slug>. Duplicates in a single HAR
+	// (5 hits to the same endpoint) are disambiguated via a shared
+	// counter so each becomes a distinct template.
 	base2 := opts.Prefix + "." + sanitiseIdentifier(strings.ToLower(req.Method)+"_"+parsed.Path)
-	counters[base2]++
-	name := base2
-	if counters[base2] > 1 {
-		name = fmt.Sprintf("%s_%d", base2, counters[base2])
-	}
+	name := uniquifyName(base2, counters)
 
-	return Template{
+	return template.Template{
 		Name:         name,
 		Method:       strings.ToUpper(req.Method),
 		URL:          urlBase,
@@ -204,66 +202,42 @@ func harEntryToTemplate(e harEntry, opts ImportHAROptions, idx int, counters map
 }
 
 // harPostDataToTemplate chooses a body_format based on the captured
-// Content-Type. HAR exports the body as text (for most types) or as
-// params (for x-www-form-urlencoded). Files are dropped — our body
-// templates don't carry binary content anyway.
+// Content-Type. HAR has two quirks vs. the other importers:
+//
+//  1. params[] is sometimes populated instead of text for form bodies
+//     (authoritative when present).
+//  2. multipart bodies can't be represented in our body_format types;
+//     we skip the body entirely and let the caller keep method/url/
+//     headers intact.
+//
+// Everything else defers to the shared sniffBody.
 func harPostDataToTemplate(p harPostData) (string, json.RawMessage) {
 	ct := strings.ToLower(p.MimeType)
-	switch {
-	case strings.HasPrefix(ct, "application/json"):
-		// text is already valid JSON; pass through as body_template.
-		if strings.TrimSpace(p.Text) == "" {
-			return "", nil
-		}
-		// Validate by unmarshal so we don't store a body_template that
-		// fails the template engine's JSON check later.
-		var any interface{}
-		if err := json.Unmarshal([]byte(p.Text), &any); err != nil {
-			// Fall back to raw so the import doesn't fail outright.
-			s, _ := json.Marshal(p.Text)
-			return "raw", s
-		}
-		return "json", json.RawMessage(p.Text)
-	case strings.HasPrefix(ct, "application/x-www-form-urlencoded"):
+	// Multipart: drop the body, keep the template.
+	if strings.HasPrefix(ct, "multipart/") {
+		return "", nil
+	}
+	// Form bodies with a params[] carry authoritative per-field data
+	// that may not reconstruct cleanly from text (quote escaping, for
+	// instance). Build the body from params[] directly.
+	if strings.HasPrefix(ct, "application/x-www-form-urlencoded") && len(p.Params) > 0 {
 		obj := map[string]string{}
-		if len(p.Params) > 0 {
-			for _, kv := range p.Params {
-				if kv.Name != "" {
-					obj[kv.Name] = kv.Value
-				}
-			}
-		} else if p.Text != "" {
-			// Parse Text as query-string if params[] wasn't populated.
-			vals, err := url.ParseQuery(p.Text)
-			if err == nil {
-				for k, vs := range vals {
-					if len(vs) > 0 {
-						obj[k] = vs[0]
-					}
-				}
+		for _, kv := range p.Params {
+			if kv.Name != "" {
+				obj[kv.Name] = kv.Value
 			}
 		}
 		raw, _ := json.Marshal(obj)
 		return "form", raw
-	case strings.HasPrefix(ct, "multipart/"):
-		// Multipart with file parts can't be round-tripped through our
-		// body_format types. Skip the body; the template still captures
-		// method/url/headers.
-		return "", nil
-	default:
-		if strings.TrimSpace(p.Text) == "" {
-			return "", nil
-		}
-		s, _ := json.Marshal(p.Text)
-		return "raw", s
 	}
+	return sniffBody(p.Text, p.MimeType)
 }
 
 // dedupeKey reduces a template to its identifying shape for --dedupe.
 // Body presence (not content) is enough — a HAR might capture 30 hits
 // to the same endpoint with different body values, and we want one
 // template not 30.
-func dedupeKey(t Template) string {
+func dedupeKey(t template.Template) string {
 	hasBody := "no"
 	if len(t.BodyTemplate) > 0 {
 		hasBody = "yes"

@@ -5,7 +5,7 @@ import (
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
-	"github.com/shhac/agent-deepweb/internal/template"
+	"github.com/shhac/agent-deepweb/internal/template/importers"
 )
 
 func registerImportPostman(parent *cobra.Command) {

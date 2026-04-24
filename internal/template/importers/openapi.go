@@ -1,10 +1,11 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -33,7 +34,7 @@ type ImportOpenAPIOptions struct {
 }
 
 // ImportOpenAPIFile reads an OpenAPI v3 JSON document from disk and
-// translates each operation into a Template. YAML specs are not
+// translates each operation into a template.Template. YAML specs are not
 // accepted in this iteration — convert first (e.g. `yq -o=json`).
 //
 // Returns the list of imported template names and any parse errors.
@@ -48,7 +49,7 @@ func ImportOpenAPIFile(path string, opts ImportOpenAPIOptions) ([]string, error)
 }
 
 // ImportOpenAPI parses a JSON-encoded OpenAPI v3 document from data
-// and stores one Template per operation. The pure byte-in API lets the
+// and stores one template.Template per operation. The pure byte-in API lets the
 // CLI layer decide where the bytes came from (file, stdin, or a
 // future URL fetcher).
 func ImportOpenAPI(data []byte, opts ImportOpenAPIOptions) ([]string, error) {
@@ -125,7 +126,7 @@ func ImportOpenAPI(data []byte, opts ImportOpenAPIOptions) ([]string, error) {
 			if err != nil {
 				return imported, fmt.Errorf("%s %s: %w", strings.ToUpper(verb), path, err)
 			}
-			if err := Store(tpl); err != nil {
+			if err := template.Store(tpl); err != nil {
 				return imported, err
 			}
 			imported = append(imported, tpl.Name)
@@ -187,11 +188,11 @@ type openapiSchema struct {
 }
 
 // operationToTemplate is the core translation: one OpenAPI operation
-// → one Template. Path/query/header parameters become ParamSpecs;
+// → one template.Template. Path/query/header parameters become ParamSpecs;
 // application/json request bodies become a single object-typed `body`
 // parameter with a pass-through template. `in:cookie` is skipped (auth
 // cookies come from the profile's jar).
-func operationToTemplate(verb, path string, op *openapiOperation, serverURL string, opts ImportOpenAPIOptions) (Template, error) {
+func operationToTemplate(verb, path string, op *openapiOperation, serverURL string, opts ImportOpenAPIOptions) (template.Template, error) {
 	method := strings.ToUpper(verb)
 	name := fmt.Sprintf("%s.%s", opts.Prefix, operationSlug(op.OperationID, verb, path))
 
@@ -200,7 +201,7 @@ func operationToTemplate(verb, path string, op *openapiOperation, serverURL stri
 
 	queryTpl := map[string]string{}
 	headers := map[string]string{}
-	params := map[string]ParamSpec{}
+	params := map[string]template.ParamSpec{}
 
 	for _, p := range op.Parameters {
 		if p.Name == "" {
@@ -234,7 +235,7 @@ func operationToTemplate(verb, path string, op *openapiOperation, serverURL stri
 			// param per body field, but that requires full $ref resolution.
 			bodyTemplate = json.RawMessage(`"{{body}}"`)
 			_ = media // reserved for future schema-driven expansion
-			bodyParam := ParamSpec{
+			bodyParam := template.ParamSpec{
 				Type:        "object",
 				Required:    op.RequestBody.Required,
 				Description: "Request body (JSON object). Pass --param body='{...}' or @file.",
@@ -248,7 +249,7 @@ func operationToTemplate(verb, path string, op *openapiOperation, serverURL stri
 		description = strings.TrimSpace(op.Description)
 	}
 
-	return Template{
+	return template.Template{
 		Name:         name,
 		Description:  description,
 		Method:       method,
@@ -263,11 +264,11 @@ func operationToTemplate(verb, path string, op *openapiOperation, serverURL stri
 }
 
 // paramSpecFromSchema flattens an OpenAPI parameter schema into our
-// ParamSpec. OpenAPI has richer types (format: date-time, pattern,
+// template.ParamSpec. OpenAPI has richer types (format: date-time, pattern,
 // minLength, etc.) that we drop in v1 — a stricter translator could
 // surface them as additional Lint() warnings.
-func paramSpecFromSchema(p openapiParameter, required bool) ParamSpec {
-	spec := ParamSpec{
+func paramSpecFromSchema(p openapiParameter, required bool) template.ParamSpec {
+	spec := template.ParamSpec{
 		Required: required,
 	}
 	if p.Schema == nil {
@@ -282,7 +283,7 @@ func paramSpecFromSchema(p openapiParameter, required bool) ParamSpec {
 	case "boolean":
 		spec.Type = "bool"
 	case "array":
-		// Our ParamSpec.Type only knows string-array; mixed-type arrays
+		// Our template.ParamSpec.Type only knows string-array; mixed-type arrays
 		// aren't representable. Fall back to string when the items type
 		// isn't a simple string.
 		if p.Schema.Items != nil && p.Schema.Items.Type != "string" {
@@ -312,46 +313,6 @@ func operationSlug(operationID, verb, path string) string {
 		return sanitiseIdentifier(operationID)
 	}
 	return sanitiseIdentifier(verb + "_" + path)
-}
-
-// sanitiseIdentifier lowers + replaces anything outside [a-z0-9._-] with
-// underscore, collapses runs, and strips trailing punctuation. Keeps
-// the template name safe to use on the command line without quoting.
-func sanitiseIdentifier(s string) string {
-	var b strings.Builder
-	s = strings.ToLower(s)
-	prevUnderscore := false
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z',
-			r >= '0' && r <= '9',
-			r == '.', r == '-':
-			b.WriteRune(r)
-			prevUnderscore = false
-		default:
-			if !prevUnderscore && b.Len() > 0 {
-				b.WriteRune('_')
-				prevUnderscore = true
-			}
-		}
-	}
-	return strings.Trim(b.String(), "_-.")
-}
-
-var pathParamRe = regexp.MustCompile(`\{([^{}]+)\}`)
-
-// pathToPlaceholders rewrites OpenAPI's `{id}` placeholders to our
-// template engine's `{{id}}` form. Urlencoded path segments stay
-// untouched.
-func pathToPlaceholders(path string) string {
-	return pathParamRe.ReplaceAllStringFunc(path, func(match string) string {
-		inner := match[1 : len(match)-1]
-		// Some specs embed type hints in placeholders ({id:int}). Strip.
-		if i := strings.IndexByte(inner, ':'); i != -1 {
-			inner = inner[:i]
-		}
-		return "{{" + inner + "}}"
-	})
 }
 
 func anyTagMatches(opTags []string, filter map[string]bool) bool {

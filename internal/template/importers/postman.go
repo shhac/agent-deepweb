@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -46,16 +48,15 @@ func ImportPostman(data []byte, opts ImportPostmanOptions) ([]string, error) {
 		return nil, fmt.Errorf("unsupported postman schema %q (need collection v2.x)", doc.Info.Schema)
 	}
 
-	// Collection-level variables seed the ParamSpec defaults for every
+	// Collection-level variables seed the template.ParamSpec defaults for every
 	// template we emit. Folder-scoped variables override at their level
 	// (walkItems threads the effective set through).
 	baseVars := variablesToMap(doc.Variable)
 
 	var imported []string
-	walk := func(items []postmanItem, ancestors []string, vars map[string]string) error {
-		return nil
-	}
-	// Go doesn't let us declare the recursive closure on one line.
+	// Recursive closure: declare the type up-front so the body can
+	// reference itself without the two-step no-op dance.
+	var walk func(items []postmanItem, ancestors []string, vars map[string]string) error
 	walk = func(items []postmanItem, ancestors []string, vars map[string]string) error {
 		for _, it := range items {
 			if len(it.Item) > 0 {
@@ -77,7 +78,7 @@ func ImportPostman(data []byte, opts ImportPostmanOptions) ([]string, error) {
 			if err != nil {
 				return fmt.Errorf("item %q: %w", it.Name, err)
 			}
-			if err := Store(tpl); err != nil {
+			if err := template.Store(tpl); err != nil {
 				return err
 			}
 			imported = append(imported, tpl.Name)
@@ -176,15 +177,15 @@ type postmanURLQueryKV struct {
 	Disabled bool   `json:"disabled"`
 }
 
-func postmanItemToTemplate(it postmanItem, ancestors []string, vars map[string]string, opts ImportPostmanOptions) (Template, error) {
+func postmanItemToTemplate(it postmanItem, ancestors []string, vars map[string]string, opts ImportPostmanOptions) (template.Template, error) {
 	req := it.Request
 	if req == nil {
-		return Template{}, fmt.Errorf("leaf item has no request")
+		return template.Template{}, fmt.Errorf("leaf item has no request")
 	}
 
 	url, queryTpl, err := parsePostmanURL(req.URL)
 	if err != nil {
-		return Template{}, err
+		return template.Template{}, err
 	}
 
 	headers := map[string]string{}
@@ -201,34 +202,11 @@ func postmanItemToTemplate(it postmanItem, ancestors []string, vars map[string]s
 		bodyFormat, bodyTemplate = postmanBodyToTemplate(req.Body)
 	}
 
-	// Build ParamSpec set: every Postman `{{var}}` referenced in URL,
-	// headers, body becomes a parameter. Defaults come from the
-	// inherited variable map.
-	refs := map[string]bool{}
-	collectPlaceholdersInto(url, refs)
-	for k, v := range queryTpl {
-		collectPlaceholdersInto(k, refs)
-		collectPlaceholdersInto(v, refs)
-	}
-	for k, v := range headers {
-		collectPlaceholdersInto(k, refs)
-		collectPlaceholdersInto(v, refs)
-	}
-	if len(bodyTemplate) > 0 {
-		collectPlaceholdersInto(string(bodyTemplate), refs)
-	}
-	params := map[string]ParamSpec{}
-	for name := range refs {
-		spec := ParamSpec{Type: "string"}
-		if def, ok := vars[name]; ok && def != "" {
-			spec.Default = def
-		}
-		// If there's no default, we don't know intent — mark required.
-		if _, hasDefault := vars[name]; !hasDefault {
-			spec.Required = true
-		}
-		params[name] = spec
-	}
+	// Every {{var}} referenced across URL/query/headers/body becomes a
+	// parameter. Defaults come from the inherited collection + folder
+	// variable map; refs without a default are marked required.
+	refs := collectTemplateRefs(url, queryTpl, headers, bodyTemplate)
+	params := paramsFromRefs(refs, vars)
 
 	segs := append([]string{}, ancestors...)
 	if it.Name != "" {
@@ -236,7 +214,7 @@ func postmanItemToTemplate(it postmanItem, ancestors []string, vars map[string]s
 	}
 	name := opts.Prefix + "." + sanitiseIdentifier(strings.Join(segs, "_"))
 
-	return Template{
+	return template.Template{
 		Name:         name,
 		Description:  strings.TrimSpace(it.Name),
 		Method:       strings.ToUpper(req.Method),
@@ -293,33 +271,6 @@ func parsePostmanURL(raw json.RawMessage) (string, map[string]string, error) {
 		path = "/" + path
 	}
 	return fmt.Sprintf("%s://%s%s", scheme, host, path), qtpl, nil
-}
-
-// splitQuery lifts a ?k=v&k2=v2 suffix off a URL into a map, so our
-// template engine can substitute per-key via Query. Keys that already
-// carry a {{placeholder}} value are preserved verbatim.
-func splitQuery(u string) (string, map[string]string) {
-	i := strings.IndexByte(u, '?')
-	if i < 0 {
-		return u, nil
-	}
-	base := u[:i]
-	qs := u[i+1:]
-	out := map[string]string{}
-	for _, pair := range strings.Split(qs, "&") {
-		if pair == "" {
-			continue
-		}
-		kv := strings.SplitN(pair, "=", 2)
-		if len(kv) != 2 {
-			continue
-		}
-		out[kv[0]] = kv[1]
-	}
-	if len(out) == 0 {
-		return base, nil
-	}
-	return base, out
 }
 
 // postmanBodyToTemplate maps the Body.Mode enum to our body_format +
@@ -380,11 +331,6 @@ func postmanBodyToTemplate(b *postmanBody) (string, json.RawMessage) {
 	return "", nil
 }
 
-func looksLikeJSON(s string) bool {
-	s = strings.TrimSpace(s)
-	return strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")
-}
-
 func variablesToMap(vs []postmanVariable) map[string]string {
 	out := map[string]string{}
 	for _, v := range vs {
@@ -393,47 +339,4 @@ func variablesToMap(vs []postmanVariable) map[string]string {
 		}
 	}
 	return out
-}
-
-func copyMap(m map[string]string) map[string]string {
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
-// anyAncestorMatches returns true when any ancestor folder name equals
-// or contains (case-insensitive) the --folder filter. Loose on purpose
-// — users type partial folder names from memory.
-func anyAncestorMatches(ancestors []string, needle string) bool {
-	n := strings.ToLower(needle)
-	for _, a := range ancestors {
-		if strings.Contains(strings.ToLower(a), n) {
-			return true
-		}
-	}
-	return false
-}
-
-// collectPlaceholdersInto walks s looking for `{{name}}` and writes
-// each unique name it finds into acc. Nested braces aren't expected
-// in Postman's templating but we stop at the first `}}`.
-func collectPlaceholdersInto(s string, acc map[string]bool) {
-	for {
-		i := strings.Index(s, "{{")
-		if i < 0 {
-			return
-		}
-		s = s[i+2:]
-		j := strings.Index(s, "}}")
-		if j < 0 {
-			return
-		}
-		name := strings.TrimSpace(s[:j])
-		if name != "" {
-			acc[name] = true
-		}
-		s = s[j+2:]
-	}
 }

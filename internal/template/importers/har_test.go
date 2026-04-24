@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"strings"
 	"testing"
 
@@ -73,7 +75,7 @@ func TestImportHAR_StripsAuthHeaders(t *testing.T) {
 		t.Fatalf("want 3 imports, got %d: %v", len(imported), imported)
 	}
 
-	tpl, err := Get(imported[0]) // cap.get_items (sorted first)
+	tpl, err := template.Get(imported[0]) // cap.get_items (sorted first)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +102,9 @@ func TestImportHAR_QueryLift(t *testing.T) {
 	}
 
 	// Find the GET (method=GET, not POST).
-	var getTpl *Template
+	var getTpl *template.Template
 	for _, name := range imported {
-		t2, _ := Get(name)
+		t2, _ := template.Get(name)
 		if t2.Method == "GET" {
 			getTpl = t2
 			break
@@ -129,7 +131,7 @@ func TestImportHAR_BodyFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	postItems, _ := Get("cap.post_items")
+	postItems, _ := template.Get("cap.post_items")
 	if postItems.BodyFormat != "json" {
 		t.Errorf("application/json postData should become body_format=json: %q", postItems.BodyFormat)
 	}
@@ -138,7 +140,7 @@ func TestImportHAR_BodyFormats(t *testing.T) {
 		t.Errorf("json body not preserved: %s", body)
 	}
 
-	login, _ := Get("cap.post_login")
+	login, _ := template.Get("cap.post_login")
 	if login.BodyFormat != "form" {
 		t.Errorf("form-urlencoded → body_format=form, got %q", login.BodyFormat)
 	}

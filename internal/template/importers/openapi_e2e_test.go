@@ -1,6 +1,8 @@
-package template
+package importers
 
 import (
+	"github.com/shhac/agent-deepweb/internal/template"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -34,24 +36,24 @@ func fetchSpec(t *testing.T, base string) []byte {
 	return b
 }
 
-// runTemplate is the minimal "execute a stored Template via api.Do"
+// runTemplate is the minimal "execute a stored template.Template via api.Do"
 // path — equivalent to what `template run` does, minus the cobra +
 // stdout layer. It expands URL/query/headers/body via the exported
 // template helpers, then hands off to api.Do. Kept in the e2e test
 // file (rather than shipped to the core package) because production
 // callers go through the CLI's prepareRequest — this is just a
 // test harness.
-func runTemplate(t *testing.T, tpl *Template, params map[string]any, auth *credential.Resolved) *api.Response {
+func runTemplate(t *testing.T, tpl *template.Template, params map[string]any, auth *credential.Resolved) *api.Response {
 	t.Helper()
 	typed, err := tpl.Validate(stringifyParams(params))
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	expandedURL, err := ExpandURL(tpl.URL, tpl.Query, typed)
+	expandedURL, err := template.ExpandURL(tpl.URL, tpl.Query, typed)
 	if err != nil {
 		t.Fatalf("expand url: %v", err)
 	}
-	headers, err := ExpandHeaders(tpl.Headers, typed)
+	headers, err := template.ExpandHeaders(tpl.Headers, typed)
 	if err != nil {
 		t.Fatalf("expand headers: %v", err)
 	}
@@ -60,7 +62,7 @@ func runTemplate(t *testing.T, tpl *Template, params map[string]any, auth *crede
 	}
 	var body io.Reader
 	if len(tpl.BodyTemplate) > 0 && tpl.BodyFormat == "json" {
-		b, err := SubstituteBody(tpl.BodyTemplate, typed)
+		b, err := template.SubstituteBody(tpl.BodyTemplate, typed)
 		if err != nil {
 			t.Fatalf("substitute body: %v", err)
 		}
@@ -187,7 +189,7 @@ func TestOpenAPI_E2E_ImportAndRun(t *testing.T) {
 	auth := anonProfile(t, base)
 
 	t.Run("healthz round-trips", func(t *testing.T) {
-		tpl, err := Get("md.healthz")
+		tpl, err := template.Get("md.healthz")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +203,7 @@ func TestOpenAPI_E2E_ImportAndRun(t *testing.T) {
 	})
 
 	t.Run("status path param substitutes", func(t *testing.T) {
-		tpl, err := Get("md.status")
+		tpl, err := template.Get("md.status")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +216,7 @@ func TestOpenAPI_E2E_ImportAndRun(t *testing.T) {
 	})
 
 	t.Run("echo POST carries body through", func(t *testing.T) {
-		tpl, err := Get("md.echo")
+		tpl, err := template.Get("md.echo")
 		if err != nil {
 			t.Fatal(err)
 		}
