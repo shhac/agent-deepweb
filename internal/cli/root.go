@@ -61,9 +61,20 @@ func newRootCmd(version string) *cobra.Command {
 	return root
 }
 
+// Execute is the convenience entrypoint used by main.go: it builds
+// the default App, installs it, and runs the cobra tree. Tests or
+// embedders that need custom dependencies should construct an App
+// and call (*App).Execute directly.
 func Execute(version string) error {
-	// Propagate version to the api package so the default User-Agent
-	// is "agent-deepweb/<version>" (curl-style).
+	return DefaultApp().Execute(version)
+}
+
+// Execute runs the cobra tree with this App's dependencies installed
+// as the process-wide defaults. Version is propagated to the api
+// package so the default User-Agent is "agent-deepweb/<version>"
+// (curl-style).
+func (a *App) Execute(version string) error {
+	a.install()
 	api.Version = version
 	// Errors are already written to stderr as structured JSON by the
 	// individual RunE handlers via output.WriteError. Cobra's own
