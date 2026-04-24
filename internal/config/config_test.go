@@ -48,6 +48,48 @@ func TestConfigDir_Precedence(t *testing.T) {
 	})
 }
 
+// TestNewStore_IsolatedFromPackageGlobals — Stores constructed with
+// NewStore read/write independently of SetConfigDir. This is the
+// property that lets tests run in parallel without cache-sharing
+// hazards; regressing would silently re-introduce flaky tests.
+func TestNewStore_IsolatedFromPackageGlobals(t *testing.T) {
+	// Package default points at dirA; Store instance points at dirB.
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	SetConfigDir(dirA)
+	t.Cleanup(func() { SetConfigDir(""); ClearCache() })
+
+	s := NewStore(dirB)
+
+	// Write via the instance; the default store MUST NOT see it.
+	c := s.Read()
+	c.Defaults.TimeoutMS = 12345
+	if err := s.Write(c); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := Read().Defaults.TimeoutMS; got == 12345 {
+		t.Errorf("default store saw instance write — cache cross-contamination (got %d)", got)
+	}
+	if got := s.Read().Defaults.TimeoutMS; got != 12345 {
+		t.Errorf("instance store lost its own write (got %d)", got)
+	}
+}
+
+// TestStore_ReadFallsBackToDefaultsOnMissingFile — no config.json yet →
+// Read returns a fully-inflated Config (with constants), not nil.
+// Callers assume non-nil everywhere.
+func TestStore_ReadFallsBackToDefaultsOnMissingFile(t *testing.T) {
+	s := NewStore(t.TempDir())
+	c := s.Read()
+	if c == nil {
+		t.Fatal("Read returned nil on missing file")
+	}
+	if c.Defaults.TimeoutMS != DefaultTimeoutMS {
+		t.Errorf("defaults not applied: %+v", c.Defaults)
+	}
+}
+
 func TestApplyDefaults_UsesConstants(t *testing.T) {
 	cfg := &Config{}
 	applyDefaults(cfg)
