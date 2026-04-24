@@ -88,33 +88,10 @@ func buildMultipart(files, formFields []string) (io.Reader, string, error) {
 	mw := multipart.NewWriter(&buf)
 
 	for _, spec := range files {
-		field, path, mimeType, filename, err := parseFileSpec(spec)
-		if err != nil {
+		if err := writeFilePart(mw, spec); err != nil {
 			return nil, "", err
 		}
-		f, err := os.Open(path)
-		if err != nil {
-			return nil, "", agenterrors.Wrap(err, agenterrors.FixableByAgent).
-				WithHint("Check the --file path exists and is readable")
-		}
-		// Write a part with explicit Content-Type so multipart-aware
-		// servers see "image/jpeg" rather than the default
-		// "application/octet-stream".
-		hdr := textproto.MIMEHeader{}
-		hdr.Set("Content-Disposition", `form-data; name="`+escapeQuotes(field)+`"; filename="`+escapeQuotes(filename)+`"`)
-		hdr.Set("Content-Type", mimeType)
-		part, err := mw.CreatePart(hdr)
-		if err != nil {
-			_ = f.Close()
-			return nil, "", agenterrors.Wrap(err, agenterrors.FixableByAgent)
-		}
-		if _, err := io.Copy(part, f); err != nil {
-			_ = f.Close()
-			return nil, "", agenterrors.Wrap(err, agenterrors.FixableByAgent)
-		}
-		_ = f.Close()
 	}
-
 	for _, f := range formFields {
 		k, v, err := shared.SplitKV(f, "--form")
 		if err != nil {
@@ -124,11 +101,42 @@ func buildMultipart(files, formFields []string) (io.Reader, string, error) {
 			return nil, "", agenterrors.Wrap(err, agenterrors.FixableByAgent)
 		}
 	}
-
 	if err := mw.Close(); err != nil {
 		return nil, "", agenterrors.Wrap(err, agenterrors.FixableByAgent)
 	}
 	return &buf, mw.FormDataContentType(), nil
+}
+
+// writeFilePart writes one --file spec to the multipart writer. Owns
+// the file's full lifecycle: parse spec, open, write MIME header, copy
+// bytes, close (via defer — guarantees no FD leak even when CreatePart
+// or io.Copy errors). Pure orchestration; no business logic about
+// multiple files or text fields.
+func writeFilePart(mw *multipart.Writer, spec string) error {
+	field, path, mimeType, filename, err := parseFileSpec(spec)
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return agenterrors.Wrap(err, agenterrors.FixableByAgent).
+			WithHint("Check the --file path exists and is readable")
+	}
+	defer f.Close() //nolint:errcheck
+
+	// Write a part with explicit Content-Type so multipart-aware servers
+	// see "image/jpeg" rather than the default "application/octet-stream".
+	hdr := textproto.MIMEHeader{}
+	hdr.Set("Content-Disposition", `form-data; name="`+escapeQuotes(field)+`"; filename="`+escapeQuotes(filename)+`"`)
+	hdr.Set("Content-Type", mimeType)
+	part, err := mw.CreatePart(hdr)
+	if err != nil {
+		return agenterrors.Wrap(err, agenterrors.FixableByAgent)
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return agenterrors.Wrap(err, agenterrors.FixableByAgent)
+	}
+	return nil
 }
 
 // parseFileSpec parses `field=@path[;type=MIME][;filename=NAME]` into its
