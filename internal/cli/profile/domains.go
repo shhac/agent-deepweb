@@ -16,7 +16,7 @@ import (
 // escalation, so they don't require the primary secret.
 
 func registerAllow(parent *cobra.Command) {
-	a := &shared.SecretAssert{}
+	a := &shared.PassphraseAssert{}
 	cmd := &cobra.Command{
 		Use:   "allow <name> <domain>",
 		Short: "Add host[:port] to allowlist (re-supply credential's primary secret)",
@@ -25,7 +25,7 @@ func registerAllow(parent *cobra.Command) {
 			return mutateDomains(args[0], args[1], true, a)
 		},
 	}
-	shared.BindSecretAssertFlags(cmd, a)
+	shared.BindPassphraseAssertFlags(cmd, a)
 	parent.AddCommand(cmd)
 }
 
@@ -41,7 +41,7 @@ func registerDisallow(parent *cobra.Command) {
 }
 
 func registerAllowPath(parent *cobra.Command) {
-	a := &shared.SecretAssert{}
+	a := &shared.PassphraseAssert{}
 	cmd := &cobra.Command{
 		Use:   "allow-path <name> <pattern>",
 		Short: "Add URL path pattern to allowlist (re-supply credential's primary secret)",
@@ -50,7 +50,7 @@ func registerAllowPath(parent *cobra.Command) {
 			return mutatePaths(args[0], args[1], true, a)
 		},
 	}
-	shared.BindSecretAssertFlags(cmd, a)
+	shared.BindPassphraseAssertFlags(cmd, a)
 	parent.AddCommand(cmd)
 }
 
@@ -90,13 +90,13 @@ func mutateSlice(existing []string, item string, add bool) (updated []string, no
 // When add=true, this is escalation — `assert` must contain the primary
 // secret, which is re-applied via escalateOverwrite. When add=false,
 // `assert` is ignored.
-func mutateDomains(name, domain string, add bool, assert *shared.SecretAssert) error {
+func mutateDomains(name, domain string, add bool, assert *shared.PassphraseAssert) error {
 	c, err := shared.LoadProfileMetadata(name)
 	if err != nil {
 		return shared.Fail(err)
 	}
 	if add {
-		if err := shared.ApplySecretAssert(c, assert); err != nil {
+		if err := shared.ApplyPassphraseAssert(c.Name, assert); err != nil {
 			return shared.Fail(err)
 		}
 	}
@@ -112,13 +112,13 @@ func mutateDomains(name, domain string, add bool, assert *shared.SecretAssert) e
 	return nil
 }
 
-func mutatePaths(name, pattern string, add bool, assert *shared.SecretAssert) error {
+func mutatePaths(name, pattern string, add bool, assert *shared.PassphraseAssert) error {
 	c, err := shared.LoadProfileMetadata(name)
 	if err != nil {
 		return shared.Fail(err)
 	}
 	if add {
-		if err := shared.ApplySecretAssert(c, assert); err != nil {
+		if err := shared.ApplyPassphraseAssert(c.Name, assert); err != nil {
 			return shared.Fail(err)
 		}
 	}

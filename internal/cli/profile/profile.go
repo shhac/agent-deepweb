@@ -8,10 +8,11 @@
 //
 //	profile.go  Register + list + show
 //	test.go     test (health-check) subcommand
-//	add.go      add subcommand, addOpts, per-auth-type Secrets builders
-//	remove.go   remove subcommand
-//	domains.go  allow/disallow and allow-path/disallow-path
-//	config.go   set-health, (un)set-default-header, set-allow-http, set-user-agent
+//	add.go            add subcommand, addOpts, per-auth-type Secrets builders
+//	remove.go         remove subcommand
+//	domains.go        allow/disallow and allow-path/disallow-path
+//	config.go         set-health, (un)set-default-header, set-allow-http, set-user-agent
+//	change_secret.go  rotate the primary secret without touching anything else
 //
 // Subcommand wiring lives here; each register* lives in the file that
 // implements its subcommand. Mutating subcommands that widen scope or
@@ -55,6 +56,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	registerUnsetDefaultHeader(cmd)
 	registerSetAllowHTTP(cmd)
 	registerSetUserAgent(cmd)
+	registerChangeSecret(cmd)
 
 	root.AddCommand(cmd)
 }

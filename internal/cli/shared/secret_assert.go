@@ -1,124 +1,57 @@
 package shared
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 )
 
-// SecretAssert collects the per-type "primary secret" flags that escalation
-// commands require. The user always re-supplies the credential's primary
-// secret to perform an escalation (widen allowlist, change defaults,
-// un-mask cookies). Two failure modes:
+// PassphraseAssert collects the --passphrase flag shared by every
+// escalation command. Compared (constant-time) against the stored
+// Secrets.Passphrase at the CLI edge; a mismatch yields a fixable_by:
+// agent error without mutating any state.
 //
-//   - Missing required flag → command errors with fixable_by:agent and a
-//     hint naming what's missing. Helps a forgetful human.
-//   - Wrong value supplied → command silently overwrites the stored secret
-//     with what was supplied. The credential is now broken; subsequent
-//     fetches send garbage auth bytes — no exfil. For form-auth, also
-//     invalidates the derived session.
-//
-// This puts the asymmetry between humans (who know the secret, no harm)
-// and LLMs (who don't, end up with a broken credential they can't exploit)
-// at the right place: the write itself.
-type SecretAssert struct {
-	// bearer
-	Token       string
-	TokenHeader string
-	TokenPrefix string
-	// basic + form
-	Username string
-	Password string
-	// cookie
-	Cookie string
-	// custom
-	CustomHeaders []string
+// Replaces the v0.2-era SecretAssert, which required re-pasting the
+// primary secret per-type (--token / --username+--password / --cookie /
+// --custom-header). That had nasty UX for long tokens and had
+// "overwrite, don't verify" semantics that silently broke profiles on
+// typos. Passphrase verification is cleaner: wrong value errors, right
+// value proceeds, no stored state changes.
+type PassphraseAssert struct {
+	Passphrase string
 }
 
-// BindSecretAssertFlags adds the primary-secret flags to a cobra command.
-// The same flag set covers all auth types — BuildSecretsForAssert decides
-// later which fields are required for the existing credential's type.
-func BindSecretAssertFlags(cmd *cobra.Command, a *SecretAssert) {
-	f := cmd.Flags()
-	f.StringVar(&a.Token, "token", "", "Bearer token (required when escalating a bearer credential)")
-	f.StringVar(&a.TokenHeader, "token-header", "", "Override token header name")
-	f.StringVar(&a.TokenPrefix, "token-prefix", "", "Override token prefix")
-	f.StringVar(&a.Username, "username", "", "Username (required when escalating a basic or form credential)")
-	f.StringVar(&a.Password, "password", "", "Password (required when escalating a basic or form credential)")
-	f.StringVar(&a.Cookie, "cookie", "", "Cookie value (required when escalating a cookie credential)")
-	f.StringArrayVar(&a.CustomHeaders, "custom-header", nil, "Header 'K: V' (required when escalating a custom credential; repeatable)")
+// BindPassphraseAssertFlags adds --passphrase to a cobra command.
+func BindPassphraseAssertFlags(cmd *cobra.Command, a *PassphraseAssert) {
+	cmd.Flags().StringVar(&a.Passphrase, "passphrase", "",
+		"Profile's passphrase (set at 'profile add'; defaults to the primary secret if --passphrase wasn't used at add time)")
 }
 
-// BuildSecretsForAssert takes the existing credential's type and validates
-// that the per-type required flags were supplied (returns fixable_by:agent
-// error if not). On success, returns the Secrets struct that will be
-// stored — which contains the user-supplied values. If the user supplied
-// the right values, this struct equals what's already stored (overwrite is
-// a no-op). If they supplied wrong values, the credential is overwritten
-// with garbage.
+// ApplyPassphraseAssert verifies the supplied passphrase against the
+// stored one for the named profile. Returns a classified error on
+// missing flag or mismatch; the caller should propagate via shared.Fail
+// without performing the mutation.
 //
-// Delegates the per-type validation to credential.BuildSecretsCore so the
-// add-time and escalate-time paths share one source of truth.
-func BuildSecretsForAssert(authType string, a *SecretAssert) (credential.Secrets, error) {
-	s, err := credential.BuildSecretsCore(authType, credential.SecretInputs{
-		Token:         a.Token,
-		TokenHeader:   a.TokenHeader,
-		TokenPrefix:   a.TokenPrefix,
-		Username:      a.Username,
-		Password:      a.Password,
-		Cookie:        a.Cookie,
-		CustomHeaders: a.CustomHeaders,
-	})
-	if err != nil {
-		return credential.Secrets{}, agenterrors.Newf(agenterrors.FixableByAgent,
-			"%s to escalate a %s credential", err.Error(), authType)
+// Does not touch stored state on either branch. The mutation (scope
+// widening, header change, primary-secret rotation, etc.) is the
+// caller's responsibility and runs only on success.
+func ApplyPassphraseAssert(name string, a *PassphraseAssert) error {
+	if a.Passphrase == "" {
+		return agenterrors.New("--passphrase is required", agenterrors.FixableByAgent).
+			WithHint("Use the passphrase you set at 'profile add' (or, if you didn't, the profile's primary secret — token/password/cookie/custom-header value)")
 	}
-	return s, nil
-}
-
-// EscalateOverwrite re-asserts the primary secret of an existing credential
-// by overwriting the stored Secrets. For non-form types, the new Secrets
-// fully replace the stored ones. For form, the new {Username, Password}
-// fields are merged into the existing form config (LoginURL, ExtraFields,
-// TokenPath, etc. preserved); the derived session file is then deleted to
-// force a re-login.
-//
-// Returns no error from a "wrong" secret — by design, an LLM with garbage
-// values just breaks the credential, which is what we want.
-func EscalateOverwrite(name string, asserted credential.Secrets) error {
-	existing, err := credential.Resolve(name)
-	if err != nil {
+	err := credential.VerifyPassphrase(name, a.Passphrase)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, credential.ErrPassphraseMismatch):
+		return agenterrors.Newf(agenterrors.FixableByAgent,
+			"--passphrase does not match the one stored for %q", name).
+			WithHint("Check the passphrase with the user. If they don't remember, they can run 'agent-deepweb profile change-secret " + name + "' to rotate.")
+	default:
 		return credential.ClassifyLookupErr(err, name)
 	}
-	newSecrets := asserted
-	if existing.Type == credential.AuthForm {
-		// Preserve form config; replace only username+password.
-		merged := existing.Secrets
-		merged.Username = asserted.Username
-		merged.Password = asserted.Password
-		newSecrets = merged
-	}
-	if _, err := credential.Store(existing.Credential, newSecrets); err != nil {
-		return agenterrors.Wrap(err, agenterrors.FixableByHuman)
-	}
-	// For form auth, invalidate the derived session — the new password
-	// might not produce the same session, so any cookies/token from the
-	// old session are now suspect. The next request will fail-with-hint
-	// telling the user to re-login.
-	if existing.Type == credential.AuthForm {
-		_ = credential.ClearJar(name)
-	}
-	return nil
-}
-
-// ApplySecretAssert is the convenience caller: validates the per-type
-// required flags then overwrites the credential's stored secret. Wrong
-// value → silent overwrite (the credential is now broken).
-func ApplySecretAssert(c *credential.Credential, a *SecretAssert) error {
-	secrets, err := BuildSecretsForAssert(c.Type, a)
-	if err != nil {
-		return err
-	}
-	return EscalateOverwrite(c.Name, secrets)
 }

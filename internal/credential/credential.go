@@ -93,6 +93,29 @@ type Secrets struct {
 	// alongside the primary secret (Keychain on macOS, secrets file
 	// elsewhere) so its protection matches the primary secret's.
 	JarKey []byte `json:"jar_key,omitempty"`
+
+	// Passphrase is the human-level authorization key used to authenticate
+	// modifications to the profile (allow, allow-path, set-default-header,
+	// set-allow-http, change-secret, jar mark-visible). At add time the
+	// human can optionally set a short friendly phrase via --passphrase;
+	// otherwise it defaults to a representative value of the primary
+	// secret (bearer token, password, etc.) — see DefaultPassphrase.
+	//
+	// Unlike the primary secret (used by the HTTP client), the passphrase
+	// is verified (constant-time compare) at escalation time. A wrong
+	// value errors cleanly — no silent profile breakage. The LLM without
+	// the passphrase can't perform any modification; the oracle surface
+	// is mitigated by a 12-char minimum when explicitly set and by the
+	// harness-level allowlist that denies escalation commands in the
+	// first place.
+	Passphrase string `json:"passphrase,omitempty"`
+
+	// PassphraseAutoDerived is true when the stored Passphrase was
+	// defaulted from the primary secret (the user didn't pass
+	// --passphrase at add time). change-secret uses this: when true,
+	// the Passphrase is re-derived from the NEW primary on rotation;
+	// when false (human-chosen passphrase), it persists.
+	PassphraseAutoDerived bool `json:"passphrase_auto_derived,omitempty"`
 }
 
 // Resolved is the internal view used by the HTTP layer: metadata + live

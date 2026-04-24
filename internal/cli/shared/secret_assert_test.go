@@ -9,223 +9,97 @@ import (
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 )
 
-// TestBuildSecretsForAssert_PerType covers the per-type required-flag
-// validation. Missing flags → fixable_by:agent error naming the flag(s).
-// Supplied flags → correctly-shaped Secrets.
-func TestBuildSecretsForAssert_PerType(t *testing.T) {
-	t.Run("bearer requires --token", func(t *testing.T) {
-		_, err := BuildSecretsForAssert(credential.AuthBearer, &SecretAssert{})
-		assertAgentFixable(t, err, "--token")
-
-		s, err := BuildSecretsForAssert(credential.AuthBearer, &SecretAssert{Token: "t1", TokenHeader: "X-Auth", TokenPrefix: "Token "})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.Token != "t1" || s.Header != "X-Auth" || s.Prefix != "Token " {
-			t.Errorf("unexpected secrets: %+v", s)
-		}
-	})
-
-	t.Run("basic requires both --username and --password", func(t *testing.T) {
-		_, err := BuildSecretsForAssert(credential.AuthBasic, &SecretAssert{Username: "a"})
-		assertAgentFixable(t, err, "--username and --password")
-
-		s, err := BuildSecretsForAssert(credential.AuthBasic, &SecretAssert{Username: "a", Password: "p"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.Username != "a" || s.Password != "p" {
-			t.Errorf("unexpected: %+v", s)
-		}
-	})
-
-	t.Run("cookie requires --cookie", func(t *testing.T) {
-		_, err := BuildSecretsForAssert(credential.AuthCookie, &SecretAssert{})
-		assertAgentFixable(t, err, "--cookie")
-
-		s, err := BuildSecretsForAssert(credential.AuthCookie, &SecretAssert{Cookie: "a=b"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.Cookie != "a=b" {
-			t.Errorf("unexpected: %+v", s)
-		}
-	})
-
-	t.Run("custom requires at least one --custom-header", func(t *testing.T) {
-		_, err := BuildSecretsForAssert(credential.AuthCustom, &SecretAssert{})
-		assertAgentFixable(t, err, "--custom-header")
-
-		s, err := BuildSecretsForAssert(credential.AuthCustom, &SecretAssert{CustomHeaders: []string{"X-Api-Key: sk-123"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.Headers["X-Api-Key"] != "sk-123" {
-			t.Errorf("unexpected: %+v", s)
-		}
-
-		_, err = BuildSecretsForAssert(credential.AuthCustom, &SecretAssert{CustomHeaders: []string{"no-colon"}})
-		if err == nil {
-			t.Error("expected malformed-header error")
-		}
-	})
-
-	t.Run("form requires both --username and --password", func(t *testing.T) {
-		_, err := BuildSecretsForAssert(credential.AuthForm, &SecretAssert{Password: "p"})
-		assertAgentFixable(t, err, "--username and --password")
-
-		s, err := BuildSecretsForAssert(credential.AuthForm, &SecretAssert{Username: "u", Password: "p"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if s.Username != "u" || s.Password != "p" {
-			t.Errorf("unexpected: %+v", s)
-		}
-	})
-
-	t.Run("unknown type errors cleanly", func(t *testing.T) {
-		_, err := BuildSecretsForAssert("mystery", &SecretAssert{})
-		if err == nil || !strings.Contains(err.Error(), "unknown auth type") {
-			t.Errorf("want unknown-auth error, got %v", err)
-		}
-	})
-}
-
-// TestEscalateOverwrite_FormPreservesConfigClearsJar is the load-bearing
-// invariant of the v2 form-auth escalation: username+password are
-// replaced, everything else in Secrets survives (LoginURL, ExtraFields,
-// TokenPath, etc.), and the derived jar is cleared so the next request
-// forces a re-login.
-func TestEscalateOverwrite_FormPreservesConfigClearsJar(t *testing.T) {
+// TestApplyPassphraseAssert_MatchesStored covers the happy path: the
+// right passphrase verifies, no state changes.
+func TestApplyPassphraseAssert_MatchesStored(t *testing.T) {
 	dir := t.TempDir()
 	config.SetConfigDir(dir)
 	t.Cleanup(func() { config.SetConfigDir("") })
 
-	// Register a form profile with the full set of non-secret fields.
-	original := credential.Secrets{
-		Username:      "alice",
-		Password:      "old-pw",
-		LoginURL:      "https://api.example.com/login",
-		LoginFormat:   "json",
-		UsernameField: "email",
-		PasswordField: "pw",
-		TokenPath:     "access_token",
-		SessionTTL:    "2h",
-		ExtraFields:   map[string]string{"client_id": "xyz"},
-	}
+	// Bearer profile. Passphrase was not set at add time → auto-derived
+	// from the token.
 	if _, err := credential.Store(
-		credential.Credential{Name: "form-p", Type: credential.AuthForm, Domains: []string{"api.example.com"}},
-		original,
+		credential.Credential{Name: "p-auto", Type: credential.AuthBearer, Domains: []string{"a.example.com"}},
+		credential.Secrets{Token: "real-bearer-token-long"},
 	); err != nil {
 		t.Fatal(err)
 	}
+	if err := ApplyPassphraseAssert("p-auto", &PassphraseAssert{Passphrase: "real-bearer-token-long"}); err != nil {
+		t.Errorf("auto-derived passphrase should match token, got %v", err)
+	}
 
-	// Give the profile a jar (as if it had logged in).
-	if err := credential.WriteJar(&credential.Jar{
-		Name:    "form-p",
-		Token:   "session-token",
-		Cookies: []credential.PersistedCookie{{Name: "sid", Value: "abc"}},
-	}); err != nil {
+	// Bearer profile with explicit 12-char passphrase.
+	if _, err := credential.Store(
+		credential.Credential{Name: "p-set", Type: credential.AuthBearer, Domains: []string{"b.example.com"}},
+		credential.Secrets{Token: "another-long-tok", Passphrase: "my-nice-phrase-123"},
+	); err != nil {
 		t.Fatal(err)
 	}
-
-	// Escalate with a new password (the wrong-value case — but the code
-	// overwrites regardless, which is the whole design).
-	asserted := credential.Secrets{Username: "alice", Password: "new-pw"}
-	if err := EscalateOverwrite("form-p", asserted); err != nil {
-		t.Fatal(err)
-	}
-
-	// Inspect the stored secret: username+password changed, everything
-	// else identical.
-	after, err := credential.Resolve("form-p")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after.Secrets.Password != "new-pw" {
-		t.Errorf("password not overwritten: %q", after.Secrets.Password)
-	}
-	if after.Secrets.LoginURL != original.LoginURL {
-		t.Errorf("LoginURL lost on escalation: %q", after.Secrets.LoginURL)
-	}
-	if after.Secrets.TokenPath != original.TokenPath {
-		t.Errorf("TokenPath lost: %q", after.Secrets.TokenPath)
-	}
-	if after.Secrets.ExtraFields["client_id"] != "xyz" {
-		t.Errorf("ExtraFields lost: %+v", after.Secrets.ExtraFields)
-	}
-
-	// Jar must be gone — the old session was tied to the old password.
-	if _, err := credential.ReadJar("form-p"); err == nil {
-		t.Error("jar should have been cleared on form escalation")
+	if err := ApplyPassphraseAssert("p-set", &PassphraseAssert{Passphrase: "my-nice-phrase-123"}); err != nil {
+		t.Errorf("explicit passphrase should verify, got %v", err)
 	}
 }
 
-// TestEscalateOverwrite_BearerWrongValueSilentlyBreaks verifies the
-// self-punishing property: calling escalate with a WRONG token doesn't
-// error, but the stored token is now garbage. Any subsequent fetch
-// using the profile sends garbage auth bytes.
-func TestEscalateOverwrite_BearerWrongValueSilentlyBreaks(t *testing.T) {
+// TestApplyPassphraseAssert_Mismatches covers the security-critical
+// case: wrong passphrase must error cleanly, not silently mutate.
+func TestApplyPassphraseAssert_Mismatches(t *testing.T) {
 	dir := t.TempDir()
 	config.SetConfigDir(dir)
 	t.Cleanup(func() { config.SetConfigDir("") })
 
 	if _, err := credential.Store(
-		credential.Credential{Name: "bearer-p", Type: credential.AuthBearer, Domains: []string{"a.example.com"}},
-		credential.Secrets{Token: "REAL-TOKEN-long-enough"},
+		credential.Credential{Name: "p", Type: credential.AuthBearer, Domains: []string{"a.example.com"}},
+		credential.Secrets{Token: "right-token-long", Passphrase: "correct-passphrase-x"},
 	); err != nil {
 		t.Fatal(err)
 	}
 
-	// LLM-style: supply a plausible-looking but wrong value.
-	err := EscalateOverwrite("bearer-p", credential.Secrets{Token: "BOGUS-TOKEN-long-enough"})
-	if err != nil {
-		t.Fatalf("EscalateOverwrite must not return an error for a wrong value; got %v", err)
-	}
-
-	after, _ := credential.Resolve("bearer-p")
-	if after.Secrets.Token != "BOGUS-TOKEN-long-enough" {
-		t.Errorf("stored token should now equal the (wrong) value supplied, got %q", after.Secrets.Token)
-	}
-}
-
-// TestApplySecretAssert_PropagatesAuthType verifies the outer wrapper
-// uses the existing credential's type for validation (not something
-// the caller supplies), and runs the build-validate step BEFORE the
-// overwrite. A missing flag must not touch the stored secret.
-func TestApplySecretAssert_PropagatesAuthType(t *testing.T) {
-	dir := t.TempDir()
-	config.SetConfigDir(dir)
-	t.Cleanup(func() { config.SetConfigDir("") })
-
-	if _, err := credential.Store(
-		credential.Credential{Name: "bearer-p2", Type: credential.AuthBearer, Domains: []string{"a.example.com"}},
-		credential.Secrets{Token: "UNTOUCHED-TOKEN-long"},
-	); err != nil {
-		t.Fatal(err)
-	}
-	c, _ := credential.GetMetadata("bearer-p2")
-
-	// No --token supplied → must error before overwriting.
-	err := ApplySecretAssert(c, &SecretAssert{})
-	assertAgentFixable(t, err, "--token")
-
-	after, _ := credential.Resolve("bearer-p2")
-	if after.Secrets.Token != "UNTOUCHED-TOKEN-long" {
-		t.Errorf("failed validation must not touch stored secret; got %q", after.Secrets.Token)
-	}
-}
-
-func assertAgentFixable(t *testing.T, err error, mustContain string) {
-	t.Helper()
+	err := ApplyPassphraseAssert("p", &PassphraseAssert{Passphrase: "WRONG-passphrase-xxx"})
 	if err == nil {
-		t.Fatalf("expected error containing %q, got nil", mustContain)
+		t.Fatal("wrong passphrase must error")
 	}
 	var ae *agenterrors.APIError
 	if !agenterrors.As(err, &ae) || ae.FixableBy != agenterrors.FixableByAgent {
-		t.Fatalf("expected fixable_by:agent, got %v (fixable_by=%v)", err, ae)
+		t.Errorf("wrong passphrase should be fixable_by:agent, got %v", err)
 	}
-	if !strings.Contains(err.Error(), mustContain) {
-		t.Errorf("error %q does not mention %q", err.Error(), mustContain)
+	if !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("error should mention mismatch, got %v", err)
+	}
+
+	// Stored state is untouched: right passphrase still works.
+	if err := ApplyPassphraseAssert("p", &PassphraseAssert{Passphrase: "correct-passphrase-x"}); err != nil {
+		t.Errorf("stored passphrase should not have mutated; got %v", err)
+	}
+}
+
+// TestApplyPassphraseAssert_MissingFlag errors with the right
+// classification and names the flag.
+func TestApplyPassphraseAssert_MissingFlag(t *testing.T) {
+	err := ApplyPassphraseAssert("anything", &PassphraseAssert{})
+	if err == nil {
+		t.Fatal("expected error for missing --passphrase")
+	}
+	var ae *agenterrors.APIError
+	if !agenterrors.As(err, &ae) || ae.FixableBy != agenterrors.FixableByAgent {
+		t.Errorf("missing flag should be fixable_by:agent, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "--passphrase") {
+		t.Errorf("error should name --passphrase, got %v", err)
+	}
+}
+
+// TestApplyPassphraseAssert_UnknownProfile surfaces the right
+// fixable_by classification so the LLM knows to stop and ask.
+func TestApplyPassphraseAssert_UnknownProfile(t *testing.T) {
+	dir := t.TempDir()
+	config.SetConfigDir(dir)
+	t.Cleanup(func() { config.SetConfigDir("") })
+
+	err := ApplyPassphraseAssert("ghost", &PassphraseAssert{Passphrase: "anything-12-chars-long"})
+	if err == nil {
+		t.Fatal("expected error for unknown profile")
+	}
+	if !strings.Contains(err.Error(), "ghost") {
+		t.Errorf("error should name the missing profile, got %v", err)
 	}
 }

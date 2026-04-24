@@ -37,7 +37,7 @@ func registerSetHealth(parent *cobra.Command) {
 }
 
 func registerSetDefaultHeader(parent *cobra.Command) {
-	a := &shared.SecretAssert{}
+	a := &shared.PassphraseAssert{}
 	cmd := &cobra.Command{
 		Use:   "set-default-header <name> <header>",
 		Short: "Add/replace a default header 'K: V' (re-supply credential's primary secret)",
@@ -51,7 +51,7 @@ func registerSetDefaultHeader(parent *cobra.Command) {
 			if err != nil {
 				return shared.Fail(err)
 			}
-			if err := shared.ApplySecretAssert(c, a); err != nil {
+			if err := shared.ApplyPassphraseAssert(c.Name, a); err != nil {
 				return shared.Fail(err)
 			}
 			if c.DefaultHeaders == nil {
@@ -65,7 +65,7 @@ func registerSetDefaultHeader(parent *cobra.Command) {
 			return nil
 		},
 	}
-	shared.BindSecretAssertFlags(cmd, a)
+	shared.BindPassphraseAssertFlags(cmd, a)
 	parent.AddCommand(cmd)
 }
 
@@ -92,7 +92,7 @@ func registerUnsetDefaultHeader(parent *cobra.Command) {
 }
 
 func registerSetAllowHTTP(parent *cobra.Command) {
-	a := &shared.SecretAssert{}
+	a := &shared.PassphraseAssert{}
 	cmd := &cobra.Command{
 		Use:   "set-allow-http <name> <true|false>",
 		Short: "Permit http:// for this credential (re-supply credential's primary secret)",
@@ -102,7 +102,7 @@ func registerSetAllowHTTP(parent *cobra.Command) {
 			if err != nil {
 				return shared.Fail(err)
 			}
-			if err := shared.ApplySecretAssert(c, a); err != nil {
+			if err := shared.ApplyPassphraseAssert(c.Name, a); err != nil {
 				return shared.Fail(err)
 			}
 			v := strings.ToLower(args[1])
@@ -114,7 +114,7 @@ func registerSetAllowHTTP(parent *cobra.Command) {
 			return nil
 		},
 	}
-	shared.BindSecretAssertFlags(cmd, a)
+	shared.BindPassphraseAssertFlags(cmd, a)
 	parent.AddCommand(cmd)
 }
 

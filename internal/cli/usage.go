@@ -80,9 +80,11 @@ SECRET-SAFETY RULES
     stored alongside the primary secret. BYO jars (--cookiejar <path>) are plaintext —
     the caller picked the path.
   - Escalation commands (profile allow / set-default-header / set-allow-http /
-    jar mark-visible) require re-supplying the profile's primary secret. The
-    LLM, which doesn't have it, can't widen scope or un-mask cookies usefully:
-    a wrong value silently overwrites the stored secret with garbage.
+    change-secret / jar mark-visible) require --passphrase, which is
+    verified (constant-time) against a value stored with the profile. A
+    wrong passphrase errors cleanly; the LLM without it can't escalate.
+    The passphrase defaults to the primary secret unless the human set
+    a friendly one at 'profile add' time via --passphrase.
 
 PER-VERB REFERENCE (run these for detailed help)
   fetch llm-help                     fetch command reference
@@ -98,13 +100,14 @@ get useless results which are themselves an audit signal)
   profile list
   profile show <name>
   profile test <name>
-  profile add <name> --type <t> --domain <host> [...]
+  profile add <name> --type <t> --domain <host> [--passphrase <p>] [...]
   profile remove <name>                            (clears jar too)
-  profile allow <name> <domain> --token T          (re-supply primary secret)
+  profile allow <name> <domain> --passphrase <p>
   profile disallow <name> <domain>
-  profile allow-path <name> <pattern> --token T    (re-supply primary secret)
-  profile set-default-header <name> "K: V" --token T
-  profile set-allow-http <name> true --token T
+  profile allow-path <name> <pattern> --passphrase <p>
+  profile set-default-header <name> "K: V" --passphrase <p>
+  profile set-allow-http <name> true --passphrase <p>
+  profile change-secret <name> --passphrase <p> [--token T | --password P | ...]
   profile set-health <name> <url>
   profile set-user-agent <name> <ua>
 
@@ -114,5 +117,5 @@ JAR MANAGEMENT
   jar clear <name>                                 Wipe the jar
   jar set-expires <name> <duration|RFC3339>
   jar mark-sensitive <name> <c1> [c2 ...]          Force redaction in jar show
-  jar mark-visible   <name> <c1> [c2 ...] --token T  (re-supply primary secret)
+  jar mark-visible   <name> <c1> [c2 ...] --passphrase <p>
 `

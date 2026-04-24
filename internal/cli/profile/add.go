@@ -38,6 +38,11 @@ type addOpts struct {
 	// custom headers (secret)
 	customHeaders []string
 
+	// passphrase — optional human-level authorization phrase for
+	// escalation commands. Defaults to the primary-secret representative
+	// value when not set at add time (see credential.DefaultPassphrase).
+	passphrase string
+
 	// form login
 	loginURL          string
 	loginMethod       string
@@ -129,6 +134,13 @@ func registerAdd(parent *cobra.Command) {
 			if err != nil {
 				return shared.Fail(err)
 			}
+			if err := credential.ValidatePassphrase(o.passphrase); err != nil {
+				return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent, "%s", err.Error()))
+			}
+			if o.passphrase != "" {
+				secrets.Passphrase = o.passphrase
+				secrets.PassphraseAutoDerived = false
+			}
 
 			c := credential.Credential{
 				Name:           args[0],
@@ -170,6 +182,7 @@ func bindAddFlags(cmd *cobra.Command, o *addOpts) {
 	f.StringVar(&o.health, "health", "", "URL for 'creds test' health check")
 	f.StringVar(&o.notes, "notes", "", "Freeform note")
 	f.BoolVar(&o.allowHTTP, "allow-http", false, "Permit http:// (not just https://); default is https-only except loopback")
+	f.StringVar(&o.passphrase, "passphrase", "", "Human-level passphrase for escalation commands (min 12 chars). Defaults to the primary secret if not set — so you can always type the token/password to escalate.")
 
 	f.StringVar(&o.token, "token", "", "Bearer token (for --type bearer)")
 	f.StringVar(&o.tokenHeaderSet, "token-header", "", "Header name for bearer token (default Authorization)")

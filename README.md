@@ -130,10 +130,10 @@ agent-deepweb's job: don't be a hole in the harness's sandbox. The harness (Clau
 | Cookie jars encrypted at rest | AES-256-GCM with per-profile random key alongside the primary secret |
 | BYO jar (`--cookiejar <path>`) is plaintext | The caller picked the path; explicit ownership of the contents |
 | Sensitive cookies masked in `jar show` | HttpOnly + name-pattern classification; human override via `mark-sensitive`/`mark-visible` |
-| Escalation requires re-asserting the primary secret | `profile allow / set-default-header / set-allow-http / jar mark-visible` all overwrite the stored secret with what's supplied. Wrong value → silent break, no exfil |
+| Escalation requires a passphrase | `profile allow / set-default-header / set-allow-http / change-secret / jar mark-visible` all require `--passphrase`, constant-time verified against a value stored with the profile. The passphrase defaults to the primary secret unless a friendly one was set at `profile add` time |
 | Every request is audited | Append-only JSONL at `~/.config/agent-deepweb/audit.log`, including `profile` and `jar` fields |
 
-The "primary secret re-assertion" replaces the v1 mode-gated refusals: it puts the asymmetry between humans (who know the secret) and LLMs (who don't) at the write itself, not in a soft env-var contract.
+The passphrase replaces v2's original "re-assert the primary secret" design. UX is better (a short friendly phrase beats pasting a 64-byte token) and failure modes are cleaner (wrong passphrase errors; wrong re-asserted secret used to silently break the profile). Security asymmetry is unchanged: the human knows the passphrase, the LLM doesn't.
 
 ### A note on jar encryption
 
@@ -171,17 +171,18 @@ agent-deepweb tpl remove <name>
 agent-deepweb profile list
 agent-deepweb profile show <name>
 agent-deepweb profile test <name>
-agent-deepweb profile add <name> --type <t> ...
+agent-deepweb profile add <name> --type <t> [--passphrase <p>] ...
 agent-deepweb profile remove <name>              Clears jar too
-agent-deepweb profile allow <name> <domain>      --token T   (re-supply primary secret)
+agent-deepweb profile allow <name> <domain>      --passphrase <p>
 agent-deepweb profile disallow <name> <domain>
-agent-deepweb profile allow-path <name> <path>   --token T
+agent-deepweb profile allow-path <name> <path>   --passphrase <p>
 agent-deepweb profile disallow-path <name> <path>
 agent-deepweb profile set-health <name> <url>
-agent-deepweb profile set-default-header <name> "K: V" --token T
+agent-deepweb profile set-default-header <name> "K: V" --passphrase <p>
 agent-deepweb profile unset-default-header <name> K
-agent-deepweb profile set-allow-http <name> true --token T
+agent-deepweb profile set-allow-http <name> true --passphrase <p>
 agent-deepweb profile set-user-agent <name> <ua>
+agent-deepweb profile change-secret <name> --passphrase <p> [--token T | --password P | ...]
 
 agent-deepweb login <name>                       Form-login flow (writes to jar)
 agent-deepweb jar status <name>
@@ -189,7 +190,7 @@ agent-deepweb jar show <name>                    Cookies; sensitive values maske
 agent-deepweb jar clear <name>
 agent-deepweb jar set-expires <name> <d|ts>
 agent-deepweb jar mark-sensitive <name> <c> [c2 ...]
-agent-deepweb jar mark-visible   <name> <c> [c2 ...]   --token T
+agent-deepweb jar mark-visible   <name> <c> [c2 ...]   --passphrase <p>
 
 agent-deepweb audit tail [-n N]
 agent-deepweb audit summary

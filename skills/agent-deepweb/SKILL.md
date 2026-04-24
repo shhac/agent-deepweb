@@ -126,8 +126,8 @@ Errors go to stderr as JSON:
 The harness should deny these commands; agent-deepweb's primary-secret-re-assertion is a second line of defence. Either way, running them either fails or silently breaks the profile (no exfil, but very noticeable to the user via audit log + broken subsequent requests):
 
 - **Adding a profile** (`profile add`) — you'd produce a profile authenticated with whatever junk you guessed for the secret. Useless.
-- **Widening allowlist** (`profile allow`, `profile allow-path`, `profile set-default-header`, `profile set-allow-http`) — these require re-supplying the profile's primary secret. Wrong value silently OVERWRITES the stored secret with garbage. The next legitimate fetch fails; the user investigates.
-- **Un-masking cookies** (`jar mark-visible`) — same mechanism. Requires the primary secret; wrong value breaks the profile.
+- **Widening allowlist or rotating the primary** (`profile allow`, `profile allow-path`, `profile set-default-header`, `profile set-allow-http`, `profile change-secret`) — these require `--passphrase`, which is constant-time verified against a stored value. You don't have it. A wrong guess errors cleanly.
+- **Un-masking cookies** (`jar mark-visible`) — same mechanism. Requires `--passphrase`.
 - **Reading the encrypted jar directly** — `cat ~/.config/agent-deepweb/profiles/<name>/jar.json` returns AES-256-GCM ciphertext. The decryption key is stored alongside the primary secret (Keychain on macOS).
 - **Performing form-login** (`login`) — requires the form-auth profile to already have correct credentials; you can't put valid credentials in.
 
@@ -154,7 +154,7 @@ Allow:
   agent-deepweb audit summary
 
 Deny (or simply not allowlisted):
-  agent-deepweb profile add|remove|allow|allow-path|disallow|disallow-path|set-*
+  agent-deepweb profile add|remove|allow|allow-path|disallow|disallow-path|set-*|change-secret
   agent-deepweb login *
   agent-deepweb jar clear|set-expires|mark-*
   agent-deepweb tpl import|remove

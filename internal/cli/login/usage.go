@@ -9,7 +9,7 @@ USAGE
   agent-deepweb jar clear <name>                Wipe the jar
   agent-deepweb jar set-expires <name> <when>   Override expiry (duration or RFC3339)
   agent-deepweb jar mark-sensitive <name> <c1> [c2 ...]
-  agent-deepweb jar mark-visible   <name> <c1> [c2 ...] --token T   (escalation)
+  agent-deepweb jar mark-visible   <name> <c1> [c2 ...] --passphrase <p>   (escalation)
 
 SUMMARY
   For profiles of --type form, 'login' performs the form submission and
@@ -25,8 +25,7 @@ SUMMARY
   patterns like session/csrf/auth/token) are redacted in 'jar show'.
   Use 'jar mark-sensitive' to force more cookies into the redacted set
   (no escalation), or 'jar mark-visible' to un-mask one (escalation —
-  re-supply the profile's primary secret; wrong value silently breaks
-  the profile).
+  requires --passphrase).
 
 STATUS
   Form login is implemented end-to-end. The flow:

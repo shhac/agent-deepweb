@@ -97,14 +97,14 @@ func registerJar(root *cobra.Command) {
 		Args:  cobra.MinimumNArgs(2),
 		RunE:  markSensitivity(true, nil),
 	})
-	visibleAssert := &shared.SecretAssert{}
+	visibleAssert := &shared.PassphraseAssert{}
 	visibleCmd := &cobra.Command{
 		Use:   "mark-visible <name> <cookie> [cookie...]",
 		Short: "Un-mask one or more cookie values (re-supply profile's primary secret)",
 		Args:  cobra.MinimumNArgs(2),
 		RunE:  markSensitivity(false, visibleAssert),
 	}
-	shared.BindSecretAssertFlags(visibleCmd, visibleAssert)
+	shared.BindPassphraseAssertFlags(visibleCmd, visibleAssert)
 	jar.AddCommand(visibleCmd)
 	root.AddCommand(jar)
 }
@@ -117,7 +117,7 @@ func registerJar(root *cobra.Command) {
 // secret must be re-asserted before the cookie sensitivity is changed.
 // Wrong values overwrite the stored secret with garbage — the LLM gains
 // nothing from un-masking a jar whose underlying profile is now broken.
-func markSensitivity(sensitive bool, assert *shared.SecretAssert) func(*cobra.Command, []string) error {
+func markSensitivity(sensitive bool, assert *shared.PassphraseAssert) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		cookies := args[1:]
@@ -126,7 +126,7 @@ func markSensitivity(sensitive bool, assert *shared.SecretAssert) func(*cobra.Co
 			if err != nil {
 				return shared.Fail(err)
 			}
-			if err := shared.ApplySecretAssert(c, assert); err != nil {
+			if err := shared.ApplyPassphraseAssert(c.Name, assert); err != nil {
 				return shared.Fail(err)
 			}
 		}

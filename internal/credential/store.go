@@ -101,6 +101,16 @@ func Store(c Credential, s Secrets) (storage string, err error) {
 			s.JarKey = k
 		}
 	}
+	// Auto-populate the passphrase when the caller didn't set one. On
+	// initial add, this defaults to the primary-secret representative
+	// value (so an existing user who never set --passphrase can still
+	// escalate by typing the primary secret). On subsequent Store calls
+	// (change-secret, etc.) the caller is responsible for passing the
+	// right Passphrase — we only fill in the blank.
+	if s.Passphrase == "" {
+		s.Passphrase = DefaultPassphrase(c.Type, s)
+		s.PassphraseAutoDerived = true
+	}
 	entry := entryFromCredential(c)
 
 	if runtime.GOOS == "darwin" {
