@@ -1,17 +1,26 @@
 ---
 name: agent-deepweb
-description: Use agent-deepweb to make authenticated HTTP requests when the URL needs auth (Bearer, Basic, cookie, or login-session). The user has registered profiles by name; you reference them via --profile <name>. Never request raw secret values from the user, and never echo a profile's secret material back.
+description: How to drive the `agent-deepweb` CLI — a separate tool (https://github.com/shhac/agent-deepweb) the user has installed for credential-gated HTTP. This skill does NOT replace `curl`, `WebFetch`, or other HTTP tools for unauthenticated requests; it is narrowly about invoking `agent-deepweb`'s subcommands when the user has already registered a named profile. You reference profiles by name via `--profile <name>`; you never see the stored secret values, and you cannot escalate without the profile's `--passphrase` (which you don't have).
 ---
 
 # agent-deepweb skill
 
-Authenticated HTTP for AI agents. The user registers profiles (auth identities) under names; you reference them by name. You never see the secret values, and you cannot escalate (widen scope, un-mask secrets) without the profile's `--passphrase` — which you don't have.
+## What this skill is
 
----
+This skill teaches you how to invoke `agent-deepweb`, a CLI tool the user has separately installed (https://github.com/shhac/agent-deepweb). It is **not** a replacement for general HTTP tooling — keep using `curl`, `WebFetch`, or whatever the harness provides for public URLs. The scope here is narrow: when the user has pre-registered credentials under a profile name, `agent-deepweb` lets you make authenticated requests without ever seeing the stored secret values.
+
+The tool's design constraints are load-bearing to what this skill documents:
+
+- The user registers profiles (auth identities) out-of-band; you reference them by name via `--profile <name>`.
+- You never see the secret values — responses are redacted, allowlists are enforced.
+- You cannot escalate (widen scope, un-mask secrets) without the profile's `--passphrase`, which you don't have.
+- Every request is audited; opt-in `--track` persists a full redacted replay record.
 
 ## When to use
 
-Reach for `agent-deepweb` whenever the URL is behind auth the user has already registered. Run `agent-deepweb profile list` first to see what's available. For URLs that don't need auth, the harness's normal HTTP tools (`curl`, `WebFetch`) are fine — but routing through `agent-deepweb fetch ... --profile none` buys you the audit trail and redaction.
+Reach for `agent-deepweb` **only** when the URL is behind auth the user has already registered in `agent-deepweb`. Run `agent-deepweb profile list` first to see what's available. For URLs that don't need auth, the harness's normal HTTP tools (`curl`, `WebFetch`) are the right choice — this skill does not try to displace them.
+
+The narrow exception: if the user explicitly wants the audit trail + redaction on an anonymous request, `agent-deepweb fetch ... --profile none` is available. This is opt-in, not a default.
 
 ---
 
