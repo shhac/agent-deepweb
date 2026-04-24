@@ -10,12 +10,13 @@
 //
 //	credential.go   Type definitions (Credential, Secrets, Resolved,
 //	                NotFoundError, indexEntry) + entryToCredential.
-//	store.go        Index/secrets file I/O + Store/Remove.
+//	store.go        Index/secrets file I/O + Store/Remove (provisions JarKey).
 //	query.go        List / GetMetadata / Resolve.
 //	mutate.go       Per-field setters (SetDomains, SetPaths, …).
 //	match.go        Host/port/path matching for URL allowlist.
 //	cookie.go       PersistedCookie + classification.
-//	session.go      Derived session state + cookie harvesting.
+//	jar.go          Per-profile encrypted Jar (cookies, optional token,
+//	                expiry) + AES-256-GCM read/write at profiles/<name>/jar.json.
 //	notfound.go     WrapNotFound helper for CLI callers.
 //	keychain.go     macOS Keychain adapter.
 package credential
@@ -76,6 +77,13 @@ type Secrets struct {
 	SuccessStatus int               `json:"success_status,omitempty"`
 	TokenPath     string            `json:"token_path,omitempty"`
 	SessionTTL    string            `json:"session_ttl,omitempty"`
+
+	// JarKey is a 32-byte AES-256 key used to encrypt the profile's jar
+	// file (profiles/<name>/jar.json). Provisioned at profile-add time
+	// and preserved across mutations; cleared on profile remove. Stored
+	// alongside the primary secret (Keychain on macOS, secrets file
+	// elsewhere) so its protection matches the primary secret's.
+	JarKey []byte `json:"jar_key,omitempty"`
 }
 
 // Resolved is the internal view used by the HTTP layer: metadata + live

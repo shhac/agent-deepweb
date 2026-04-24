@@ -19,8 +19,8 @@ import (
 )
 
 type opts struct {
-	auth          string
-	noAuth        bool
+	profile       string
+	cookieJar     string
 	query         string
 	variables     string
 	operationName string
@@ -39,8 +39,8 @@ func Register(root *cobra.Command, globals shared.Globals) {
 			return run(args[0], globals(), o)
 		},
 	}
-	cmd.Flags().StringVar(&o.auth, "auth", "", "Credential alias")
-	cmd.Flags().BoolVar(&o.noAuth, "no-auth", false, "Skip auth even if a credential matches")
+	cmd.Flags().StringVar(&o.profile, "profile", "", "Profile name, or 'none' for explicit anonymous")
+	cmd.Flags().StringVar(&o.cookieJar, "cookiejar", "", "Bring-your-own cookie jar (plaintext JSON file)")
 	cmd.Flags().StringVar(&o.query, "query", "", "GraphQL document (required; @file, @- for stdin)")
 	cmd.Flags().StringVar(&o.variables, "variables", "", "JSON variables (string, @file, or @-)")
 	cmd.Flags().StringVar(&o.operationName, "operation-name", "", "Operation name")
@@ -77,18 +77,14 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 			WithHint("Pass the GraphQL document as a string, @file, or @- for stdin"))
 	}
 
-	authName := shared.FirstNonEmpty(o.auth, g.Auth)
-	var auth *credential.Resolved
-	if !o.noAuth {
-		a, err := shared.ResolveAuth(endpoint, authName)
-		if err != nil {
-			return shared.Fail(err)
-		}
-		auth = a
+	profileName := shared.FirstNonEmpty(o.profile, g.Profile)
+	auth, err := shared.ResolveProfile(endpoint, profileName)
+	if err != nil {
+		return shared.Fail(err)
 	}
-	// Anonymous requests must opt in via --no-auth; ResolveAuth already
-	// errors when no credential matches, so reaching here means the caller
-	// either picked one explicitly or asked for anonymous on purpose.
+	// Anonymous requests must opt in via `--profile none`; ResolveProfile
+	// errors when no profile matches and the flag is empty, so reaching
+	// here means the caller picked one explicitly or asked for anonymous.
 
 	body, err := buildGraphQLPayload(o)
 	if err != nil {
@@ -105,6 +101,7 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 		Headers: map[string]string{"Content-Type": "application/json", "Accept": "application/json"},
 		Body:    bytes.NewReader(body),
 		Auth:    auth,
+		JarPath: o.cookieJar,
 	}, api.ClientOptions{
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
@@ -164,10 +161,10 @@ func buildGraphQLEnvelope(endpoint string, auth *credential.Resolved, resp *api.
 		"truncated": false,
 		"data":      nil,
 		"errors":    nil,
-		"auth":      nil,
+		"profile":   nil,
 	}
 	if auth != nil {
-		envelope["auth"] = auth.Name
+		envelope["profile"] = auth.Name
 	}
 	var parsed gqlResponse
 	if resp == nil {

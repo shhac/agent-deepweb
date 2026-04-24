@@ -12,7 +12,7 @@ USAGE
 SUMMARY
   A template is a frozen request shape authored by the human. The LLM can
   ONLY fill in parameter values — it cannot change URL, method, headers,
-  credential binding, or body shape. This is the highest-safety mode:
+  profile binding, or body shape. This is the highest-safety mode:
   data-only input, templated substitution, no free-form URLs.
 
 TEMPLATE FILE FORMAT
@@ -21,7 +21,7 @@ TEMPLATE FILE FORMAT
     "description": "Fetch a user's public profile",
     "method": "GET",
     "url": "https://api.github.com/users/{{username}}",
-    "auth": "github",
+    "profile": "github",
     "parameters": {
       "username": { "type": "string", "required": true }
     }

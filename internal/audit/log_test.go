@@ -20,7 +20,7 @@ func TestAppendAndTail(t *testing.T) {
 			Method:     "GET",
 			Host:       "example.com",
 			Path:       "/p",
-			Credential: "c",
+			Profile:    "c",
 			Status:     200,
 			Bytes:      100 + i,
 			DurationMS: int64(i),
@@ -54,9 +54,9 @@ func TestDisabledSkipsWrites(t *testing.T) {
 
 func TestSummarize_GroupsByHostAndOutcome(t *testing.T) {
 	entries := []Entry{
-		{Host: "a.com", Outcome: "ok", Credential: "k1"},
-		{Host: "a.com", Outcome: "error", Credential: "k1"},
-		{Host: "b.com", Outcome: "ok"}, // no credential
+		{Host: "a.com", Outcome: "ok", Profile: "k1"},
+		{Host: "a.com", Outcome: "error", Profile: "k1"},
+		{Host: "b.com", Outcome: "ok", Profile: "none", Jar: "/tmp/byo.json"},
 	}
 	s := Summarize(entries)
 	if s.Total != 3 {
@@ -68,7 +68,13 @@ func TestSummarize_GroupsByHostAndOutcome(t *testing.T) {
 	if s.ByOutcome["ok"] != 2 || s.ByOutcome["error"] != 1 {
 		t.Errorf("by_outcome: %v", s.ByOutcome)
 	}
-	if s.ByCred["k1"] != 2 || s.ByCred["(none)"] != 1 {
-		t.Errorf("by_credential: %v", s.ByCred)
+	if s.ByProfile["k1"] != 2 || s.ByProfile["none"] != 1 {
+		t.Errorf("by_profile: %v", s.ByProfile)
+	}
+	if s.AnonymousCount != 1 {
+		t.Errorf("anonymous_requests: %d", s.AnonymousCount)
+	}
+	if s.ByJarPath["/tmp/byo.json"] != 1 {
+		t.Errorf("by_jar_path: %v", s.ByJarPath)
 	}
 }

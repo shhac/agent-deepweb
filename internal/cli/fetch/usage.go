@@ -6,10 +6,11 @@ USAGE
   agent-deepweb fetch <url> [flags]
 
 SUMMARY
-  Performs an HTTP request with auth attached from a saved credential.
-  The credential is resolved by --auth <name>, or by matching the URL's
-  host against the domain allowlist of saved credentials. If a credential
-  applies to the host but you don't want auth, pass --no-auth.
+  Performs an HTTP request with auth attached from a saved profile.
+  The profile is resolved by --profile <name>, or by matching the URL's
+  host against the domain allowlist of saved profiles. If a profile
+  applies to the host but you don't want auth, pass --profile none
+  (the explicit anonymous opt-in).
 
 OUTPUT
   By default emits a JSON envelope:
@@ -17,7 +18,7 @@ OUTPUT
       "status":       200,
       "status_text":  "200 OK",
       "url":          "https://...",
-      "auth":         "myapi" or null,
+      "profile":      "myapi" or null,
       "headers":      { ... redacted ... },
       "content_type": "application/json",
       "truncated":    false,
@@ -27,8 +28,10 @@ OUTPUT
   With --format text, a short header precedes the body.
 
 FLAGS
-  --auth <name>                  Credential alias (else resolved by host)
-  --no-auth                      Skip credential attachment even if a match exists
+  --profile <name|none>          Profile alias, or 'none' for anonymous
+  --cookiejar <path>             Bring-your-own plaintext cookie jar; overrides
+                                 the profile's encrypted default. Use with
+                                 --profile none for novel LLM-authored flows.
   --method GET|POST|...          HTTP method (default: GET, or POST if body given)
   --header 'K: V'                Extra request header (repeatable; no secrets)
   --query key=value              URL query parameter (repeatable)
@@ -39,24 +42,31 @@ FLAGS
   --max-size <bytes>             Cap response body size (default 10 MiB)
   --follow-redirects             Follow redirects (default: true)
   --format json|jsonl|raw|text   Output format (default json)
-  --no-redact                    HUMAN-ONLY: print headers/body unredacted
 
 EXAMPLES
-  # GET with auto-resolved credential
+  # GET with auto-resolved profile
   agent-deepweb fetch https://api.example.com/v1/me
 
-  # Explicit credential
-  agent-deepweb fetch https://api.example.com/v1/me --auth myapi
+  # Explicit profile
+  agent-deepweb fetch https://api.example.com/v1/me --profile myapi
 
   # POST JSON
   agent-deepweb fetch https://api.example.com/v1/items \
-    --method POST --json '{"name":"widget"}' --auth myapi
+    --method POST --json '{"name":"widget"}' --profile myapi
 
   # Raw body (for piping to jq, for instance)
   agent-deepweb fetch https://api.example.com/v1/me --format raw | jq .
 
+  # Anonymous fetch
+  agent-deepweb fetch https://example.com/healthz --profile none
+
+  # Bring-your-own jar (LLM owns the credentials)
+  agent-deepweb fetch https://test.example.com/login --profile none \
+    --cookiejar /tmp/test.json --method POST \
+    --json '{"username":"...","password":"..."}'
+
 ERRORS
   fixable_by: agent   URL malformed, wrong method, body too large, bad JSON
-  fixable_by: human   Credential not on allowlist, 401/403, session expired
+  fixable_by: human   Profile not on allowlist, 401/403, session expired
   fixable_by: retry   Network error, 429, 5xx, timeout
 `

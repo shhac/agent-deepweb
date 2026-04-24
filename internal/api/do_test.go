@@ -26,7 +26,6 @@ func setup(t *testing.T) string {
 	config.SetConfigDir(dir)
 	t.Cleanup(func() { config.SetConfigDir("") })
 	t.Setenv("AGENT_DEEPWEB_AUDIT", "on")
-	t.Setenv("AGENT_DEEPWEB_MODE", "")
 	return dir
 }
 
@@ -46,6 +45,16 @@ func testResolved(t *testing.T, authType string, serverURL string, secrets crede
 			AllowHTTP: true, // httptest is http://
 		},
 		Secrets: secrets,
+	}
+}
+
+// registerProfile stores credential "c" so tests that exercise the jar
+// (read/write) get a profile-bound JarKey for encryption. Tests that
+// only use Resolved without touching the jar don't need this.
+func registerProfile(t *testing.T, r *credential.Resolved) {
+	t.Helper()
+	if _, err := credential.Store(r.Credential, r.Secrets); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -79,7 +88,7 @@ func TestDo_OKWritesAuditEntry(t *testing.T) {
 		t.Fatalf("want 1 audit entry, got %d", len(entries))
 	}
 	e := entries[0]
-	if e.Outcome != "ok" || e.Status != 200 || e.Credential != "c" || e.Method != "GET" {
+	if e.Outcome != "ok" || e.Status != 200 || e.Profile != "c" || e.Method != "GET" {
 		t.Errorf("audit entry: %+v", e)
 	}
 }
@@ -165,17 +174,17 @@ func TestDo_FormSessionExpiredRefuses(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sess := &credential.Session{
+	resolved := testResolved(t, credential.AuthForm, srv.URL, credential.Secrets{})
+	registerProfile(t, resolved)
+	sess := &credential.Jar{
 		Name:     "c",
 		Cookies:  []credential.PersistedCookie{{Name: "session", Value: "x", Sensitive: true}},
 		Expires:  time.Now().Add(-1 * time.Hour),
 		Acquired: time.Now().Add(-2 * time.Hour),
 	}
-	if err := credential.WriteSession(sess); err != nil {
+	if err := credential.WriteJar(sess); err != nil {
 		t.Fatal(err)
 	}
-
-	resolved := testResolved(t, credential.AuthForm, srv.URL, credential.Secrets{})
 	_, err := Do(context.Background(), Request{URL: srv.URL, Auth: resolved},
 		ClientOptions{Timeout: 2 * time.Second, MaxBytes: 1024})
 
@@ -198,17 +207,17 @@ func TestDo_CookieHarvestingPreservesSensitivity(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	resolved := testResolved(t, credential.AuthForm, srv.URL, credential.Secrets{})
+	registerProfile(t, resolved)
 	// Pre-seed a form-auth session so harvesting writes into it.
-	sess := &credential.Session{
+	sess := &credential.Jar{
 		Name:     "c",
 		Expires:  time.Now().Add(1 * time.Hour),
 		Acquired: time.Now(),
 	}
-	if err := credential.WriteSession(sess); err != nil {
+	if err := credential.WriteJar(sess); err != nil {
 		t.Fatal(err)
 	}
-
-	resolved := testResolved(t, credential.AuthForm, srv.URL, credential.Secrets{})
 	resp, err := Do(context.Background(), Request{URL: srv.URL, Auth: resolved},
 		ClientOptions{Timeout: 5 * time.Second, MaxBytes: 1024})
 	if err != nil {
@@ -229,7 +238,7 @@ func TestDo_CookieHarvestingPreservesSensitivity(t *testing.T) {
 	}
 
 	// Session file on disk should now reflect the harvested cookies.
-	reread, err := credential.ReadSession("c")
+	reread, err := credential.ReadJar("c")
 	if err != nil {
 		t.Fatal(err)
 	}

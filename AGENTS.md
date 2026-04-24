@@ -24,9 +24,9 @@ Before committing: `make fmt && make lint && make test`.
 
 ## The v2 security model in one paragraph
 
-agent-deepweb's job is to not be a hole in the harness's sandbox. The harness (Claude Code) decides which subcommands the LLM can invoke; agent-deepweb makes sure each subcommand can't be misused. The handful of escalation paths (`profile allow / allow-path`, `profile set-default-header`, `profile set-allow-http`, `session mark-visible`) require re-supplying the profile's primary secret as a flag. We don't verify the value — we OVERWRITE the stored secret with whatever was supplied. A human who knows the secret produces a no-op overwrite; an LLM that doesn't ends up with a useless broken profile. Every request is audited.
+agent-deepweb's job is to not be a hole in the harness's sandbox. The harness (Claude Code) decides which subcommands the LLM can invoke; agent-deepweb makes sure each subcommand can't be misused. The handful of escalation paths (`profile allow / allow-path`, `profile set-default-header`, `profile set-allow-http`, `jar mark-visible`) require re-supplying the profile's primary secret as a flag. We don't verify the value — we OVERWRITE the stored secret with whatever was supplied. A human who knows the secret produces a no-op overwrite; an LLM that doesn't ends up with a useless broken profile. Per-profile cookie jars are encrypted at rest with AES-256-GCM (random key generated at `profile add` time, stored alongside the primary secret). Every request is audited.
 
-There is no "agent mode" / "human mode" anymore. Anonymous requests must be opt-in via `--no-auth` (no silent fallthrough). Redaction is mandatory (no `--no-redact` flag). `--allow-http` is per-profile only (set with `profile set-allow-http`).
+There is no "agent mode" / "human mode" anymore. Anonymous requests must be opt-in via `--profile none` (no silent fallthrough). Redaction is mandatory (no `--no-redact` flag). `--allow-http` is per-profile only (set with `profile set-allow-http`).
 
 ---
 
@@ -44,36 +44,37 @@ internal/
     classify.go                     classifyTransport, classifyHTTP → fixable_by
     auth.go                         ApplyAuth per credential type
     redact.go                       Header / JSON body / literal-byte echo redactors
-  audit/log.go                      Append-only JSONL request log
+  audit/log.go                      Append-only JSONL request log (profile + jar fields)
   cli/                              Cobra command tree
     root.go                         Global flags + subcommand registration
     usage.go                        Top-level llm-help card
     shared/                         Helpers used by every subcommand
-      shared.go                     GlobalFlags, ResolveAuth (URL allowlist + ambiguity)
+      shared.go                     GlobalFlags, ResolveProfile (URL allowlist + ambiguity, ProfileNone sentinel)
       helpers.go                    Fail*, PrintOK, First*, SplitHeader, SplitKV, ResolveLimits
       secret_assert.go              SecretAssert + escalateOverwrite — the v2 escalation gate
-    fetch/                          `fetch` — curl-with-auth
+    fetch/                          `fetch` — curl-with-auth (--profile / --cookiejar)
     graphql/                        `graphql` — POST + error classification
     profile/                        `profile {list,show,test,add,remove,allow,…}` — split per file
       profile.go                    Register + list + show
       test.go / add.go / remove.go  One file per subcommand
       domains.go                    allow/disallow/allow-path/disallow-path
       config.go                     set-health/set-default-header/set-allow-http/set-user-agent
-    login/                          `login` + `session …`
+    login/                          `login` + `jar …`
       login.go                      Register wiring
-      session.go                    status / show / clear / set-expires / mark-*
+      jar.go                        jar status / show / clear / set-expires / mark-*
       form.go                       doLogin + helpers (the form-login engine)
     tpl/                            `tpl {list,show,run,import,remove}`
     audit/                          `audit tail / summary`
   config/config.go                  App config I/O + DefaultTimeoutMS / DefaultMaxBytes constants
   credential/                       Profile storage (legacy package name; see note below)
-    credential.go                   Types (Credential, Secrets, Resolved, indexEntry)
-    store.go                        Store/Remove + index+secrets file I/O
+    credential.go                   Types (Credential, Secrets — incl. JarKey, Resolved, indexEntry)
+    store.go                        Store/Remove + index+secrets file I/O (provisions JarKey)
     query.go                        List / GetMetadata / Resolve
     mutate.go                       Set*(name, …) setters
     match.go                        MatchesURL — host[:port] + path allowlist
     cookie.go                       PersistedCookie + sensitivity classification
-    session.go                      Session (cookies + token + expiry) + jar helpers
+    jar.go                          Jar (cookies + token + expiry); AES-256-GCM read/write
+                                    at profiles/<name>/jar.json + plain BYO helpers
     keychain.go                     macOS Keychain adapter
     notfound.go                     WrapNotFound / ClassifyLookupErr
   errors/errors.go                  APIError{Message, Hint, FixableBy, Cause}
@@ -87,7 +88,7 @@ internal/
     substitute.go                   {{param}} rendering
     notfound.go                     WrapNotFound / ClassifyLookupErr
 design-docs/v1-design.md            v1 (mode-gated) rationale
-design-docs/v2-profiles.md          v2 (profiles + password-protect) rationale and decisions
+design-docs/v2-profiles.md          v2 (profiles + password-protect + jars) rationale and decisions
 skills/agent-deepweb/SKILL.md       Claude Code skill definition + permission allowlist
 ```
 
@@ -99,11 +100,11 @@ skills/agent-deepweb/SKILL.md       Claude Code skill definition + permission al
 
 | Verb | Notes |
 |------|-------|
-| `fetch` | curl-with-auth. `--no-auth` for anonymous. |
-| `graphql` | POST with classified GraphQL error envelope. |
+| `fetch` | curl-with-auth. `--profile <name>` or `--profile none`. Optional `--cookiejar <path>` for BYO. |
+| `graphql` | POST with classified GraphQL error envelope. Same `--profile` / `--cookiejar`. |
 | `tpl` | Parameterised request templates. `tpl run` is the LLM-facing verb. |
-| `profile` | CRUD for profiles. Escalation commands require primary secret re-assertion. |
-| `login` / `session` | Form-login flow + session introspection. |
+| `profile` | CRUD for profiles. Escalation commands require primary secret re-assertion. `remove` clears the jar too. |
+| `login` / `jar` | Form-login flow + per-profile jar inspection. |
 | `audit` | Inspect the append-only request log. |
 | `llm-help` | Per-verb reference cards. |
 
@@ -113,20 +114,22 @@ The harness (Claude Code) decides which of these the LLM can run. SKILL.md ships
 
 ## Key design decisions
 
-- **Profiles as the unit.** A profile bundles secret material, host[:port]+path allowlist, default headers, User-Agent override, and (for form-auth) a derived session. CLI verb is `profile`. Storage package stayed named `credential` (impl detail).
-- **No mode infrastructure.** `AGENT_DEEPWEB_MODE` is gone. Anonymous requests are opt-in via `--no-auth`; redaction is unconditional; `--allow-http` is per-profile only.
-- **Primary-secret re-assertion on escalation.** Commands that widen scope (`profile allow / allow-path`) or change defaults that affect outbound requests (`set-default-header / set-allow-http`) or un-mask cookies (`session mark-visible`) require the profile's primary secret as flag(s). We OVERWRITE the stored secret with what's supplied — wrong value silently breaks the profile.
+- **Profiles as the unit.** A profile bundles secret material, host[:port]+path allowlist, default headers, User-Agent override, and a per-profile encrypted cookie jar. CLI verb is `profile`. Storage package stayed named `credential` (impl detail).
+- **No mode infrastructure.** `AGENT_DEEPWEB_MODE` is gone. Anonymous requests are opt-in via `--profile none`; redaction is unconditional; `--allow-http` is per-profile only.
+- **Primary-secret re-assertion on escalation.** Commands that widen scope (`profile allow / allow-path`) or change defaults that affect outbound requests (`set-default-header / set-allow-http`) or un-mask cookies (`jar mark-visible`) require the profile's primary secret as flag(s). We OVERWRITE the stored secret with what's supplied — wrong value silently breaks the profile.
 - **URL allowlist per profile.** `host`, `host:port`, `*.wildcard`, `*.wildcard:port`, plus optional path patterns (exact, `/prefix/*`, `path.Match` glob).
-- **Anonymous requests refused unless explicit.** `ResolveAuth` errors when no profile matches the URL — the caller must pass `--no-auth` to opt into anonymous. Closes the v1 hole where forgetting to register a profile turned agent-deepweb into a generic outbound HTTP client.
+- **Anonymous requests refused unless explicit.** `ResolveProfile` errors when no profile matches the URL — the caller must pass `--profile none` to opt into anonymous. Closes the v1 hole where forgetting to register a profile turned agent-deepweb into a generic outbound HTTP client.
 - **https-only by default.** `http://` is refused for auth-attaching profiles unless the host is loopback or the profile has `allow_http: true` (set with `profile set-allow-http <name> true --token ...`).
-- **Cookie jar + per-cookie sensitivity classification.** Form auth uses `net/http/cookiejar` with the public-suffix list. Each persisted cookie carries a `Sensitive` bool (HttpOnly OR auth-name regex). `session show` reveals visible cookies with values, sensitive cookies as `<redacted>`.
+- **Cookie jar generalised + encrypted.** Every profile has a jar (`profiles/<name>/jar.json`), not just form auth — bearer/basic/cookie/custom upstreams that emit Set-Cookie now persist them too. Storage is AES-256-GCM with a per-profile 32-byte key generated at `profile add`, stored alongside the primary secret. The key persists across `profile set-*` mutations and is cleared on `profile remove`.
+- **BYO jar for novel flows.** `--cookiejar <path>` overrides the encrypted default with a plaintext jar at any path the user picks. Combined with `--profile none`, this lets the LLM run end-to-end signup → login → action flows where it owns the credentials it just minted.
+- **Per-cookie sensitivity classification.** Each persisted cookie carries a `Sensitive` bool (HttpOnly OR auth-name regex). `jar show` reveals visible cookies with values, sensitive cookies as `<redacted>`. Human can flip via `jar mark-sensitive` (no escalation) or `jar mark-visible` (escalation).
 - **Form-login.** `agent-deepweb login <name>` POSTs form/JSON credentials, harvests Set-Cookie, optionally extracts a Bearer token from the JSON body at `--token-path`, computes expiry as `min(session-ttl, latest-cookie-expiry, 24h)`. The login response body is never returned to the caller.
 - **Redaction is unconditional.** Response headers + JSON body fields matching secret patterns are `<redacted>`; byte-level substitution masks literal secret values anywhere they appear.
 - **Per-profile default headers.** Non-secret headers applied to every request (e.g., `Accept: application/vnd.api+json`).
-- **Keychain on macOS** (service `app.paulie.agent-deepweb`); 0600 file fallback elsewhere. Sessions always on disk at `sessions/<name>.json`.
+- **Keychain on macOS** (service `app.paulie.agent-deepweb`); 0600 file fallback elsewhere. Jars on disk at `profiles/<name>/jar.json` (encrypted) or any caller-chosen `--cookiejar` path (plaintext).
 - **Fixable-by hints everywhere.** Every error is `{error, hint, fixable_by}` with `agent | human | retry`.
 - **Request templates.** Fixed method, URL with `{{param}}` placeholders, optional query/headers/body_template, profile binding, typed parameter schema. LLM runs `tpl run <name> --param k=v`; values are coerced and validated *before* any HTTP request. Body substitution is type-preserving (an `int` param becomes a JSON number, not a string).
-- **Audit log.** Every fetch/graphql/tpl-run writes one JSONL entry to `~/.config/agent-deepweb/audit.log` with method, host, path, profile name, template name, status, bytes, duration, and `outcome`+`fixable_by` on errors. Never includes bodies, headers, or query strings. Opt out via `AGENT_DEEPWEB_AUDIT=off`.
+- **Audit log.** Every fetch/graphql/tpl-run writes one JSONL entry to `~/.config/agent-deepweb/audit.log` with method, host, path, profile name, BYO jar path, template name, status, bytes, duration, and `outcome`+`fixable_by` on errors. Tripwires: `AnonymousCount` (every `--profile none`), `ByJarPath` (every BYO jar). Never includes bodies, headers, or query strings. Opt out via `AGENT_DEEPWEB_AUDIT=off`.
 - **User-Agent precedence.** per-request `--user-agent` > profile's UA > `User-Agent` request header > `AGENT_DEEPWEB_USER_AGENT` env > `agent-deepweb/<version>` (curl-style).
 - **Single binary, pure Go.** `CGO_ENABLED=0`; deps: cobra, `golang.org/x/net/publicsuffix`.
 
@@ -142,7 +145,7 @@ make test-short     # skip slow tests
 make vet            # go vet
 make fmt            # gofmt (+ goimports if installed)
 make lint           # golangci-lint run ./...
-make dev ARGS="fetch https://httpbin.org/get --no-auth"
+make dev ARGS="fetch https://httpbin.org/get --profile none"
 make mock           # Run mockdeep on :8765
 ```
 
@@ -189,11 +192,13 @@ For unit-style integration tests, use `httptest.NewServer(mockdeep.New())` rathe
 5. If the type needs the redactor to mask its secret bytes, extend `RedactSecretEcho` in `internal/api/redact.go`.
 6. Add an endpoint to `internal/mockdeep/server.go` and a test case in `internal/api/do_test.go`.
 
+The new type automatically gets an encrypted jar — `Store` provisions a fresh JarKey for any newly added profile, regardless of type.
+
 ---
 
 ## Env vars
 
-- `AGENT_DEEPWEB_AUTH` — default profile name for `--auth`
+- `AGENT_DEEPWEB_PROFILE` — default profile name for `--profile`
 - `AGENT_DEEPWEB_CONFIG_DIR` — override `~/.config/agent-deepweb` (use in tests!)
 - `AGENT_DEEPWEB_TIMEOUT` — default request timeout (ms)
 - `AGENT_DEEPWEB_USER_AGENT` — fallback User-Agent
@@ -209,7 +214,7 @@ Uses goreleaser. `go install github.com/shhac/agent-deepweb/cmd/agent-deepweb@la
 
 ## Deferred work
 
-- **Phase D** of the v2 design: cookie jar generalization for non-form profiles + `--profile none` as the explicit anonymous opt-in (replacing `--no-auth`) + `--cookiejar <path>` BYO-jar for LLM-authored exploration flows.
 - **Browser-assisted login** (chromedp). Form-login handles most cases.
 - **Native Security Framework API (CGo)** for true keychain ACLs. Park behind harness-cooperation.
+- **`jar decrypt <name> --token T`** — print the plaintext jar after re-asserting the primary secret. Currently the only access is via `jar show` (which masks sensitive values). Using KEK-wraps-DEK rather than the current "DEK stored alongside secret" so wrong primary secret produces garbage on decrypt (self-punishing for an LLM).
 - **Response diffs / caching** for polling use cases.

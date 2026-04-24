@@ -16,14 +16,14 @@ import (
 )
 
 var (
-	flagAuth    string
+	flagProfile string
 	flagFormat  string
 	flagTimeout int
 )
 
 func allGlobals() *shared.GlobalFlags {
 	return &shared.GlobalFlags{
-		Auth:    flagAuth,
+		Profile: flagProfile,
 		Format:  flagFormat,
 		Timeout: flagTimeout,
 	}
@@ -39,12 +39,12 @@ func newRootCmd(version string) *cobra.Command {
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().StringVar(&flagAuth, "auth", "", "Profile name (or AGENT_DEEPWEB_AUTH)")
+	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "Profile name, or 'none' for explicit anonymous (or AGENT_DEEPWEB_PROFILE)")
 	root.PersistentFlags().StringVar(&flagFormat, "format", "", "Output format: json, jsonl, raw, text")
 	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 0, "Request timeout in milliseconds")
 
-	if envAuth := os.Getenv("AGENT_DEEPWEB_AUTH"); envAuth != "" && flagAuth == "" {
-		flagAuth = envAuth
+	if envProfile := os.Getenv("AGENT_DEEPWEB_PROFILE"); envProfile != "" && flagProfile == "" {
+		flagProfile = envProfile
 	}
 
 	registerUsageCommand(root)

@@ -24,14 +24,21 @@ type Entry struct {
 	Scheme     string    `json:"scheme,omitempty"`
 	Host       string    `json:"host"`
 	Path       string    `json:"path,omitempty"`
-	Credential string    `json:"credential,omitempty"`
-	Template   string    `json:"template,omitempty"` // set when dispatched via `tpl run`
-	Status     int       `json:"status,omitempty"`
-	Bytes      int       `json:"bytes,omitempty"`
-	DurationMS int64     `json:"duration_ms"`
-	Outcome    string    `json:"outcome"` // "ok" | "error"
-	Error      string    `json:"error,omitempty"`
-	FixableBy  string    `json:"fixable_by,omitempty"`
+	// Profile is the profile name in use, "none" for explicit anonymous,
+	// or "" when no profile was attached (the legacy ad-hoc-URL case).
+	Profile string `json:"profile,omitempty"`
+	// Jar is the bring-your-own jar path (when --cookiejar was passed),
+	// or "" for the profile's default encrypted jar. Tripwire: a user
+	// reviewing the audit log can grep for unexpected `jar` values to
+	// spot LLM-written jars.
+	Jar        string `json:"jar,omitempty"`
+	Template   string `json:"template,omitempty"` // set when dispatched via `tpl run`
+	Status     int    `json:"status,omitempty"`
+	Bytes      int    `json:"bytes,omitempty"`
+	DurationMS int64  `json:"duration_ms"`
+	Outcome    string `json:"outcome"` // "ok" | "error"
+	Error      string `json:"error,omitempty"`
+	FixableBy  string `json:"fixable_by,omitempty"`
 }
 
 // Enabled reports whether auditing is on. Controlled by AGENT_DEEPWEB_AUDIT:
@@ -133,29 +140,41 @@ func readAllLines(r io.Reader) ([]string, error) {
 	return lines, s.Err()
 }
 
-// Summary groups recent entries for `audit summary`.
+// Summary groups recent entries for `audit summary`. Tripwires:
+// AnonymousCount surfaces every `--profile none` request; ByJarPath
+// surfaces requests that used a bring-your-own jar.
 type Summary struct {
-	Total     int            `json:"total"`
-	ByHost    map[string]int `json:"by_host"`
-	ByCred    map[string]int `json:"by_credential"`
-	ByOutcome map[string]int `json:"by_outcome"`
-	Since     time.Time      `json:"since,omitempty"`
-	LatestTS  time.Time      `json:"latest,omitempty"`
+	Total          int            `json:"total"`
+	ByHost         map[string]int `json:"by_host"`
+	ByProfile      map[string]int `json:"by_profile"`
+	ByOutcome      map[string]int `json:"by_outcome"`
+	ByJarPath      map[string]int `json:"by_jar_path,omitempty"`
+	AnonymousCount int            `json:"anonymous_requests"` // explicit --profile none
+	Since          time.Time      `json:"since,omitempty"`
+	LatestTS       time.Time      `json:"latest,omitempty"`
 }
 
 func Summarize(entries []Entry) Summary {
 	s := Summary{
 		ByHost:    map[string]int{},
-		ByCred:    map[string]int{},
+		ByProfile: map[string]int{},
 		ByOutcome: map[string]int{},
+		ByJarPath: map[string]int{},
 	}
 	for i, e := range entries {
 		s.Total++
 		s.ByHost[e.Host]++
-		if e.Credential != "" {
-			s.ByCred[e.Credential]++
-		} else {
-			s.ByCred["(none)"]++
+		switch e.Profile {
+		case "":
+			s.ByProfile["(unset)"]++
+		case "none":
+			s.ByProfile["none"]++
+			s.AnonymousCount++
+		default:
+			s.ByProfile[e.Profile]++
+		}
+		if e.Jar != "" {
+			s.ByJarPath[e.Jar]++
 		}
 		s.ByOutcome[e.Outcome]++
 		if i == 0 {

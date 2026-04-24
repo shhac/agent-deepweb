@@ -55,7 +55,7 @@ func registerList(parent *cobra.Command) {
 				Description string `json:"description,omitempty"`
 				Method      string `json:"method"`
 				URL         string `json:"url"`
-				Auth        string `json:"auth,omitempty"`
+				Profile     string `json:"profile,omitempty"`
 				Params      int    `json:"parameter_count"`
 			}
 			rows := make([]row, 0, len(tpls))
@@ -65,7 +65,7 @@ func registerList(parent *cobra.Command) {
 					Description: t.Description,
 					Method:      t.Method,
 					URL:         t.URL,
-					Auth:        t.Auth,
+					Profile:     t.Profile,
 					Params:      len(t.Parameters),
 				})
 			}

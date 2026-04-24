@@ -56,8 +56,8 @@ func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64,
 	}
 
 	var auth *credential.Resolved
-	if tpl.Auth != "" {
-		a, resolveErr := shared.ResolveAuth(expandedURL, tpl.Auth)
+	if tpl.Profile != "" {
+		a, resolveErr := shared.ResolveProfile(expandedURL, tpl.Profile)
 		if resolveErr != nil {
 			return shared.Fail(resolveErr)
 		}

@@ -80,10 +80,26 @@ func writeSecretsFile(m map[string]Secrets) error {
 // Store persists a new or updated credential. Secrets are written to the
 // Keychain on macOS; on failure or non-macOS, fall back to the 0600 secrets
 // file. Returns "keychain" or "file" so the caller can surface the choice.
+//
+// JarKey provisioning: if the supplied Secrets has no JarKey but the
+// profile already has one stored, the existing key is preserved (so
+// profile mutations don't invalidate the jar). If neither has a key,
+// a fresh one is generated.
 func Store(c Credential, s Secrets) (storage string, err error) {
 	idx, err := readIndex()
 	if err != nil {
 		return "", err
+	}
+	if len(s.JarKey) == 0 {
+		if existing, err := loadStoredSecrets(c.Name, idx); err == nil && len(existing.JarKey) > 0 {
+			s.JarKey = existing.JarKey
+		} else {
+			k, err := generateJarKey()
+			if err != nil {
+				return "", err
+			}
+			s.JarKey = k
+		}
 	}
 	entry := entryFromCredential(c)
 
@@ -121,7 +137,9 @@ func Store(c Credential, s Secrets) (storage string, err error) {
 	return "file", nil
 }
 
-// Remove deletes the credential and its secret material.
+// Remove deletes the credential and its secret material AND clears the
+// profile's jar directory (cookies, encrypted state). A profile gone
+// from the index leaves nothing behind.
 func Remove(name string) error {
 	idx, err := readIndex()
 	if err != nil {
@@ -139,6 +157,30 @@ func Remove(name string) error {
 			_ = writeSecretsFile(sec)
 		}
 	}
+	_ = ClearJarTree(name)
 	delete(idx, name)
 	return writeIndex(idx)
+}
+
+// loadStoredSecrets fetches the existing Secrets for name (Keychain or
+// file). Used by Store to preserve fields like JarKey across mutations.
+// Returns an error if the profile isn't in the index (caller treats that
+// as "no existing key — generate a new one").
+func loadStoredSecrets(name string, idx map[string]indexEntry) (Secrets, error) {
+	e, ok := idx[name]
+	if !ok {
+		return Secrets{}, &NotFoundError{Name: name}
+	}
+	if e.KeychainManaged {
+		return keychainGet(name)
+	}
+	sec, err := readSecretsFile()
+	if err != nil {
+		return Secrets{}, err
+	}
+	s, ok := sec[name]
+	if !ok {
+		return Secrets{}, &NotFoundError{Name: name}
+	}
+	return s, nil
 }

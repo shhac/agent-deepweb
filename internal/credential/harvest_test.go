@@ -12,7 +12,7 @@ func TestHarvestResponse_PreservesSensitive(t *testing.T) {
 	// name wouldn't trip the classifier by itself ("theme" is visible
 	// by default). A refresh of that cookie from the server must NOT
 	// flip it back to visible.
-	s := &Session{
+	s := &Jar{
 		Name: "t",
 		Cookies: []PersistedCookie{
 			{Name: "theme", Value: "old", Domain: "example.com", Path: "/", Sensitive: true},
@@ -38,7 +38,7 @@ func TestHarvestResponse_PreservesSensitive(t *testing.T) {
 }
 
 func TestHarvestResponse_NewCookieClassified(t *testing.T) {
-	s := &Session{Name: "t"}
+	s := &Jar{Name: "t"}
 	resp := &http.Response{Header: http.Header{}}
 	resp.Header.Add("Set-Cookie", "session=abc; Path=/; HttpOnly")
 	resp.Header.Add("Set-Cookie", "theme=dark; Path=/")
@@ -61,14 +61,14 @@ func TestHarvestResponse_NewCookieClassified(t *testing.T) {
 
 func TestNewJar_FiltersExpired(t *testing.T) {
 	now := time.Now()
-	s := &Session{
+	s := &Jar{
 		Cookies: []PersistedCookie{
 			{Name: "alive", Value: "v1", Domain: "example.com", Path: "/", Expires: now.Add(1 * time.Hour)},
 			{Name: "dead", Value: "v2", Domain: "example.com", Path: "/", Expires: now.Add(-1 * time.Hour)},
 		},
 	}
 	u, _ := url.Parse("https://example.com/")
-	jar, err := s.NewJar(u)
+	jar, err := s.NewCookieJar(u)
 	if err != nil {
 		t.Fatal(err)
 	}

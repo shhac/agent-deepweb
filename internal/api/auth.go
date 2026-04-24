@@ -67,7 +67,7 @@ func applyCookie(req *http.Request, r *credential.Resolved) {
 // response body) as an Authorization header. Cookies from that same login
 // flow are attached via the http.Client's cookiejar, set up in client.Do.
 func applyFormToken(req *http.Request, r *credential.Resolved) {
-	sess, err := credential.ReadSession(r.Name)
+	sess, err := credential.ReadJar(r.Name)
 	if err != nil || sess.Token == "" {
 		return
 	}

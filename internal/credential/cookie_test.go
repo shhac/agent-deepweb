@@ -67,7 +67,7 @@ func TestFromHTTP_ClassifiesAndPreservesFields(t *testing.T) {
 }
 
 func TestSessionMarkCookieSensitivity(t *testing.T) {
-	s := &Session{
+	s := &Jar{
 		Name: "t",
 		Cookies: []PersistedCookie{
 			{Name: "session", Sensitive: true},

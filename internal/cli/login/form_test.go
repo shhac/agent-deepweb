@@ -48,7 +48,7 @@ func TestComputeExpiry(t *testing.T) {
 	now := time.Now().UTC()
 
 	// No TTL, no cookie expiries → default 24h.
-	s := &credential.Session{}
+	s := &credential.Jar{}
 	got := computeExpiry(s, "")
 	if d := got.Sub(now); d < 23*time.Hour || d > 25*time.Hour {
 		t.Errorf("default TTL: %v", d)
@@ -61,7 +61,7 @@ func TestComputeExpiry(t *testing.T) {
 	}
 
 	// Cookies with explicit expiries pick the earliest.
-	s = &credential.Session{Cookies: []credential.PersistedCookie{
+	s = &credential.Jar{Cookies: []credential.PersistedCookie{
 		{Expires: now.Add(2 * time.Hour)},
 		{Expires: now.Add(30 * time.Minute)},
 	}}
@@ -71,7 +71,7 @@ func TestComputeExpiry(t *testing.T) {
 	}
 
 	// TTL tighter than any cookie.
-	s = &credential.Session{Cookies: []credential.PersistedCookie{
+	s = &credential.Jar{Cookies: []credential.PersistedCookie{
 		{Expires: now.Add(4 * time.Hour)},
 	}}
 	got = computeExpiry(s, "10m")

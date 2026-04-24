@@ -62,8 +62,8 @@ func TestBuildHTTPEnvelope(t *testing.T) {
 	if env["url"] != "https://example.com/p" {
 		t.Errorf("url: %v", env["url"])
 	}
-	if env["auth"] != "c" {
-		t.Errorf("auth: %v", env["auth"])
+	if env["profile"] != "c" {
+		t.Errorf("profile: %v", env["profile"])
 	}
 	body, ok := env["body"].(map[string]any)
 	if !ok || body["ok"] != true {
@@ -77,7 +77,7 @@ func TestBuildHTTPEnvelope_NilAuth(t *testing.T) {
 		Auth:   nil,
 		Status: 200,
 	})
-	if env["auth"] != nil {
-		t.Errorf("auth should be nil, got %v", env["auth"])
+	if env["profile"] != nil {
+		t.Errorf("profile should be nil, got %v", env["profile"])
 	}
 }

@@ -24,7 +24,7 @@ type Template struct {
 	URL          string               `json:"url"`
 	Query        map[string]string    `json:"query,omitempty"`
 	Headers      map[string]string    `json:"headers,omitempty"`
-	Auth         string               `json:"auth,omitempty"`        // credential name
+	Profile      string               `json:"profile,omitempty"`     // profile name
 	BodyFormat   string               `json:"body_format,omitempty"` // "json" (default) | "form" | "raw"
 	BodyTemplate json.RawMessage      `json:"body_template,omitempty"`
 	Parameters   map[string]ParamSpec `json:"parameters,omitempty"`

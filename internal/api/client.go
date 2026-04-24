@@ -45,6 +45,11 @@ type Request struct {
 	Query   map[string][]string
 	Body    io.Reader
 	Auth    *credential.Resolved
+	// JarPath, if set, overrides the profile's encrypted default jar with
+	// a plaintext bring-your-own jar at this path. Used by `--cookiejar
+	// <path>`, including the `--profile none --cookiejar <path>` LLM-
+	// authored-flow case.
+	JarPath string
 	// UserAgent, if non-empty, overrides everything (credential's UA, env,
 	// and the default). Empty = fall through the precedence chain.
 	UserAgent string
@@ -62,8 +67,9 @@ type Response struct {
 	Body        []byte
 	Truncated   bool
 	// NewCookies: cookies captured from Set-Cookie on this response that
-	// were *not* already in the session (post-harvest diff). Visible ones
-	// have values; sensitive ones are redacted. Empty unless auth is form.
+	// were *not* already in the profile's jar (post-harvest diff). Visible
+	// ones have values; sensitive ones are redacted. Empty when no profile
+	// is attached.
 	NewCookies []credential.CookieView `json:"new_cookies,omitempty"`
 }
 
@@ -127,7 +133,7 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 		return nil, outErr
 	}
 
-	jar, err := primeCookieJar(req.Auth, parsedURL)
+	jar, err := primeCookieJar(req.Auth, req.JarPath, parsedURL)
 	if err != nil {
 		outErr = err
 		return nil, outErr
@@ -158,7 +164,7 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 		return nil, outErr
 	}
 
-	newCookieViews := harvestSessionCookies(req.Auth, httpResp, parsedURL)
+	newCookieViews := harvestJarCookies(req.Auth, req.JarPath, httpResp, parsedURL)
 
 	contentType := httpResp.Header.Get("Content-Type")
 	// Redaction is mandatory in v2 — the layered redactors run on every
@@ -235,11 +241,16 @@ func buildAuditEntry(req Request, started time.Time, resp *Response, outErr erro
 		Scheme:     scheme,
 		Host:       host,
 		Path:       path,
+		Jar:        req.JarPath,
 		Template:   req.TemplateName,
 		DurationMS: time.Since(started).Milliseconds(),
 	}
 	if req.Auth != nil {
-		e.Credential = req.Auth.Name
+		e.Profile = req.Auth.Name
+	} else {
+		// req.Auth == nil means explicit anonymous (`--profile none`) at
+		// this layer — Resolve already errored out for the no-match case.
+		e.Profile = "none"
 	}
 	if resp != nil {
 		e.Status = resp.Status
@@ -258,26 +269,35 @@ func buildAuditEntry(req Request, started time.Time, resp *Response, outErr erro
 	return e
 }
 
-// primeCookieJar returns a cookiejar seeded from the credential's session
-// (for form auth) or a fresh one. An expired session short-circuits with
-// fixable_by:human before any network call.
-func primeCookieJar(auth *credential.Resolved, parsedURL *url.URL) (http.CookieJar, error) {
-	if auth != nil && auth.Type == credential.AuthForm {
-		sess, err := credential.ReadSession(auth.Name)
-		if err == nil {
-			if sess.IsExpired() {
+// primeCookieJar returns a cookiejar seeded from the profile's stored
+// jar (for any profile type). An expired session-bound jar (form auth
+// only — that's the only type with a session-level expiry) short-circuits
+// with fixable_by:human before any network call.
+//
+// jarPath, if non-empty, points to a bring-your-own plaintext jar that
+// overrides the profile's encrypted default. The expiry check is skipped
+// for BYO jars — a caller using `--cookiejar` explicitly owns lifecycle.
+func primeCookieJar(auth *credential.Resolved, jarPath string, parsedURL *url.URL) (http.CookieJar, error) {
+	if jarPath != "" {
+		if jarState, err := credential.ReadJarPlain(jarPath); err == nil {
+			if cj, _ := jarState.NewCookieJar(parsedURL); cj != nil {
+				return cj, nil
+			}
+		}
+	} else if auth != nil {
+		if jarState, err := credential.ReadJar(auth.Name); err == nil {
+			if auth.Type == credential.AuthForm && jarState.IsExpired() {
 				return nil, agenterrors.Newf(agenterrors.FixableByHuman,
 					"session for %q is expired", auth.Name).
 					WithHint("Ask the user to run 'agent-deepweb login " + auth.Name + "'")
 			}
-			jar, _ := sess.NewJar(parsedURL)
-			if jar != nil {
-				return jar, nil
+			if cj, _ := jarState.NewCookieJar(parsedURL); cj != nil {
+				return cj, nil
 			}
 		}
 	}
-	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
-	return jar, nil
+	cj, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	return cj, nil
 }
 
 // readCappedBody reads at most maxBytes from r. Returns truncated=true when
@@ -294,29 +314,50 @@ func readCappedBody(r io.Reader, maxBytes int64) ([]byte, bool, error) {
 	return body, false, nil
 }
 
-// harvestSessionCookies captures Set-Cookie headers from a form-auth
-// response into the stored session, preserving per-cookie sensitivity,
-// and returns a list of newly-captured cookie views for the envelope.
-func harvestSessionCookies(auth *credential.Resolved, httpResp *http.Response, parsedURL *url.URL) []credential.CookieView {
-	if auth == nil || auth.Type != credential.AuthForm {
-		return nil
-	}
+// harvestJarCookies captures Set-Cookie headers from a response into
+// the appropriate jar (BYO plaintext if jarPath != "", else the
+// profile's encrypted default), preserving per-cookie sensitivity, and
+// returns a list of newly-captured cookie views for the envelope.
+//
+// Returns nil when no profile is attached AND no BYO jar was specified
+// (the truly-anonymous `--profile none` case — cookies are accepted by
+// the in-memory jar for the duration of the request but not persisted).
+func harvestJarCookies(auth *credential.Resolved, jarPath string, httpResp *http.Response, parsedURL *url.URL) []credential.CookieView {
 	if len(httpResp.Cookies()) == 0 {
 		return nil
 	}
-	sess, err := credential.ReadSession(auth.Name)
-	if err != nil {
+	if jarPath == "" && auth == nil {
 		return nil
 	}
-	before := make(map[string]struct{}, len(sess.Cookies))
-	for _, c := range sess.Cookies {
+
+	var (
+		jarState *credential.Jar
+		write    func(*credential.Jar) error
+		err      error
+	)
+	if jarPath != "" {
+		jarState, err = credential.ReadJarPlain(jarPath)
+		if err != nil {
+			jarState = &credential.Jar{Acquired: time.Now().UTC()}
+		}
+		write = func(j *credential.Jar) error { return credential.WriteJarPlain(jarPath, j) }
+	} else {
+		jarState, err = credential.ReadJar(auth.Name)
+		if err != nil {
+			jarState = &credential.Jar{Name: auth.Name, Acquired: time.Now().UTC()}
+		}
+		write = credential.WriteJar
+	}
+
+	before := make(map[string]struct{}, len(jarState.Cookies))
+	for _, c := range jarState.Cookies {
 		before[c.Name+"\x00"+c.Domain+"\x00"+c.Path] = struct{}{}
 	}
-	if changed := sess.HarvestResponse(httpResp, parsedURL); changed {
-		_ = credential.WriteSession(sess)
+	if changed := jarState.HarvestResponse(httpResp, parsedURL); changed {
+		_ = write(jarState)
 	}
 	var added []credential.CookieView
-	for _, c := range sess.Cookies {
+	for _, c := range jarState.Cookies {
 		if _, had := before[c.Name+"\x00"+c.Domain+"\x00"+c.Path]; !had {
 			added = append(added, viewPersisted(c))
 		}

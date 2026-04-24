@@ -141,7 +141,7 @@ func EscalateOverwrite(name string, asserted credential.Secrets) error {
 	// old session are now suspect. The next request will fail-with-hint
 	// telling the user to re-login.
 	if existing.Type == credential.AuthForm {
-		_ = credential.ClearSession(name)
+		_ = credential.ClearJar(name)
 	}
 	return nil
 }

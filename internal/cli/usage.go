@@ -30,27 +30,39 @@ QUICK START (read-only — safe to explore)
   profile list                       List profiles (name, type, domains; no secrets)
   profile show <name>                Metadata for one profile
   profile test <name>                Send a health-check request
+  jar status <name>                  Per-profile jar summary (cookie count, expiry)
+  jar show <name>                    Per-profile jar (sensitive cookies redacted)
   fetch <url>                        Authenticated GET (picks profile by host)
-  fetch <url> --auth <name>          Use a specific profile
+  fetch <url> --profile <name>       Use a specific profile
+  fetch <url> --profile none         Explicit anonymous (no profile attached)
 
 COMMON WORKFLOWS
   Call an authenticated JSON API:
-    fetch https://api.example.com/v1/me --auth myapi
+    fetch https://api.example.com/v1/me --profile myapi
 
   Send a GraphQL query:
     graphql https://api.example.com/graphql \
-      --auth myapi \
+      --profile myapi \
       --query 'query { me { id name } }'
 
   POST JSON:
-    fetch https://api.example.com/v1/items --auth myapi \
+    fetch https://api.example.com/v1/items --profile myapi \
       --method POST --json '{"name":"x"}'
 
-  Anonymous fetch (no profile):
-    fetch https://example.com/healthz --no-auth
+  Explicit anonymous fetch (no profile, no jar):
+    fetch https://example.com/healthz --profile none
+
+  LLM-authored end-to-end flow with bring-your-own jar:
+    fetch https://test.example.com/signup --profile none --cookiejar /tmp/flow.json \
+      --method POST --json '{"email":"...","password":"..."}'
+    fetch https://test.example.com/me     --profile none --cookiejar /tmp/flow.json
+    # Cookies persist between requests in the BYO jar (plaintext at the path).
 
 GLOBAL FLAGS
-  --auth <name>                      Profile name (or AGENT_DEEPWEB_AUTH env)
+  --profile <name>                   Profile name, or 'none' for explicit anonymous
+                                     (or AGENT_DEEPWEB_PROFILE env)
+  --cookiejar <path>                 Bring-your-own cookie jar (plaintext JSON file).
+                                     Overrides the profile's encrypted default.
   --format json|jsonl|raw|text       Output format (default: json)
   --timeout <ms>                     Request timeout in milliseconds
 
@@ -63,9 +75,12 @@ SECRET-SAFETY RULES
   - Profiles are referenced by name; the tool never prints secret values.
   - Responses are redacted: auth headers and common token fields are replaced with "<redacted>".
   - A profile only applies on its allowed host[:port] / path. Off-allowlist requests are refused.
-  - Anonymous requests must be opt-in: pass --no-auth (or no profile matches the host → error).
+  - Anonymous requests must be opt-in: pass --profile none (or no profile matches the host → error).
+  - Profile-default jars are encrypted at rest with a per-profile key (AES-256-GCM)
+    stored alongside the primary secret. BYO jars (--cookiejar <path>) are plaintext —
+    the caller picked the path.
   - Escalation commands (profile allow / set-default-header / set-allow-http /
-    session mark-visible) require re-supplying the profile's primary secret. The
+    jar mark-visible) require re-supplying the profile's primary secret. The
     LLM, which doesn't have it, can't widen scope or un-mask cookies usefully:
     a wrong value silently overwrites the stored secret with garbage.
 
@@ -74,7 +89,7 @@ PER-VERB REFERENCE (run these for detailed help)
   graphql llm-help                   graphql command reference
   tpl llm-help                       template commands reference
   profile llm-help                   profile commands reference
-  login llm-help                     login / session commands reference
+  login llm-help                     login / jar commands reference
   audit llm-help                     audit log commands reference
 
 PROFILE MANAGEMENT (typically human-run; LLMs without secret values
@@ -84,7 +99,7 @@ get useless results which are themselves an audit signal)
   profile show <name>
   profile test <name>
   profile add <name> --type <t> --domain <host> [...]
-  profile remove <name>
+  profile remove <name>                            (clears jar too)
   profile allow <name> <domain> --token T          (re-supply primary secret)
   profile disallow <name> <domain>
   profile allow-path <name> <pattern> --token T    (re-supply primary secret)
@@ -92,4 +107,12 @@ get useless results which are themselves an audit signal)
   profile set-allow-http <name> true --token T
   profile set-health <name> <url>
   profile set-user-agent <name> <ua>
+
+JAR MANAGEMENT
+  jar status <name>                                Cookie count, expiry, has-token
+  jar show <name>                                  Cookies (sensitive values redacted)
+  jar clear <name>                                 Wipe the jar
+  jar set-expires <name> <duration|RFC3339>
+  jar mark-sensitive <name> <c1> [c2 ...]          Force redaction in jar show
+  jar mark-visible   <name> <c1> [c2 ...] --token T  (re-supply primary secret)
 `

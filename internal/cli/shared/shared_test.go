@@ -8,12 +8,12 @@ import (
 	"github.com/shhac/agent-deepweb/internal/credential"
 )
 
-func TestResolveAuth(t *testing.T) {
+func TestResolveProfile(t *testing.T) {
 	dir := t.TempDir()
 	config.SetConfigDir(dir)
 	t.Cleanup(func() { config.SetConfigDir("") })
 
-	// Seed credentials: one scoped to api.example.com, one to two hosts.
+	// Seed profiles: one scoped to api.example.com, one to two hosts.
 	if _, err := credential.Store(
 		credential.Credential{Name: "api", Type: credential.AuthBearer, Domains: []string{"api.example.com"}},
 		credential.Secrets{Token: "abc-long-token-xyz"},
@@ -27,8 +27,8 @@ func TestResolveAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("flagAuth in allowlist", func(t *testing.T) {
-		r, err := ResolveAuth("https://api.example.com/p", "api")
+	t.Run("profileFlag in allowlist", func(t *testing.T) {
+		r, err := ResolveProfile("https://api.example.com/p", "api")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -36,8 +36,8 @@ func TestResolveAuth(t *testing.T) {
 			t.Errorf("got %+v", r)
 		}
 	})
-	t.Run("flagAuth off allowlist", func(t *testing.T) {
-		_, err := ResolveAuth("https://evil.com/p", "api")
+	t.Run("profileFlag off allowlist", func(t *testing.T) {
+		_, err := ResolveProfile("https://evil.com/p", "api")
 		if err == nil {
 			t.Fatal("expected off-allowlist error")
 		}
@@ -45,37 +45,46 @@ func TestResolveAuth(t *testing.T) {
 			t.Errorf("error: %v", err)
 		}
 	})
-	t.Run("unknown flagAuth", func(t *testing.T) {
-		_, err := ResolveAuth("https://api.example.com/p", "ghost")
+	t.Run("unknown profileFlag", func(t *testing.T) {
+		_, err := ResolveProfile("https://api.example.com/p", "ghost")
 		if err == nil || !strings.Contains(err.Error(), "not found") {
 			t.Errorf("expected not-found error, got %v", err)
 		}
 	})
 	t.Run("ambiguous auto-resolve", func(t *testing.T) {
-		_, err := ResolveAuth("https://api.example.com/p", "")
-		if err == nil || !strings.Contains(err.Error(), "multiple credentials match") {
+		_, err := ResolveProfile("https://api.example.com/p", "")
+		if err == nil || !strings.Contains(err.Error(), "multiple profiles match") {
 			t.Errorf("expected ambiguity error, got %v", err)
 		}
 	})
-	t.Run("no match → human-fixable error (v2 forces explicit --no-auth)", func(t *testing.T) {
-		_, err := ResolveAuth("https://nobody.example.com/p", "")
+	t.Run("no match → human-fixable error (v2 forces explicit --profile none)", func(t *testing.T) {
+		_, err := ResolveProfile("https://nobody.example.com/p", "")
 		if err == nil {
-			t.Fatal("expected error when no credential matches")
+			t.Fatal("expected error when no profile matches")
 		}
-		if !strings.Contains(err.Error(), "no credential matches") {
+		if !strings.Contains(err.Error(), "no profile matches") {
 			t.Errorf("error wording: %v", err)
 		}
 	})
 	t.Run("unique auto-resolve", func(t *testing.T) {
-		r, err := ResolveAuth("https://other.com/p", "")
+		r, err := ResolveProfile("https://other.com/p", "")
 		if err != nil || r == nil || r.Name != "other" {
 			t.Errorf("got r=%+v err=%v", r, err)
 		}
 	})
 	t.Run("malformed URL", func(t *testing.T) {
-		_, err := ResolveAuth("not-a-url", "api")
+		_, err := ResolveProfile("not-a-url", "api")
 		if err == nil {
 			t.Fatal("expected error for malformed URL")
+		}
+	})
+	t.Run("explicit --profile none returns nil resolved", func(t *testing.T) {
+		r, err := ResolveProfile("https://anything.example.com/p", ProfileNone)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if r != nil {
+			t.Errorf("expected nil resolved, got %+v", r)
 		}
 	})
 }

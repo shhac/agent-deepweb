@@ -53,7 +53,7 @@ agent-deepweb profile add myapp --type form \
 agent-deepweb login myapp
 ```
 
-On macOS the secret lives in the Keychain (service `app.paulie.agent-deepweb`). On Linux/Windows it goes to `~/.config/agent-deepweb/credentials.secrets.json` (mode 0600).
+On macOS the secret lives in the Keychain (service `app.paulie.agent-deepweb`). On Linux/Windows it goes to `~/.config/agent-deepweb/credentials.secrets.json` (mode 0600). Each profile also gets a random 32-byte key (provisioned at `profile add` time, persisted across mutations) used to encrypt its cookie jar.
 
 ### 2. Fetch
 
@@ -62,19 +62,26 @@ On macOS the secret lives in the Keychain (service `app.paulie.agent-deepweb`). 
 agent-deepweb fetch https://api.github.com/user
 
 # Explicit
-agent-deepweb fetch https://api.github.com/user --auth github
+agent-deepweb fetch https://api.github.com/user --profile github
 
 # POST JSON
 agent-deepweb fetch https://api.example.com/v1/items \
-  --method POST --json '{"name":"x"}' --auth myapi
+  --method POST --json '{"name":"x"}' --profile myapi
 
 # GraphQL
 agent-deepweb graphql https://api.github.com/graphql \
-  --auth github \
+  --profile github \
   --query 'query { viewer { login } }'
 
-# Anonymous fetch (you must opt in explicitly)
-agent-deepweb fetch https://example.com/healthz --no-auth
+# Explicit anonymous (no profile attached, no jar)
+agent-deepweb fetch https://example.com/healthz --profile none
+
+# Bring-your-own jar — LLM-authored end-to-end flow
+agent-deepweb fetch https://test.example.com/signup --profile none \
+  --cookiejar /tmp/flow.json --method POST \
+  --json '{"email":"a@b","password":"..."}'
+agent-deepweb fetch https://test.example.com/me --profile none \
+  --cookiejar /tmp/flow.json
 ```
 
 ### 3. Run a template (highest-safety mode)
@@ -97,7 +104,7 @@ Structured JSON envelope on stdout:
   "status": 200,
   "status_text": "200 OK",
   "url": "https://api.github.com/user",
-  "auth": "github",
+  "profile": "github",
   "headers": { "Content-Type": ["application/json"], "Authorization": ["<redacted>"] },
   "content_type": "application/json",
   "truncated": false,
@@ -113,26 +120,32 @@ agent-deepweb's job: don't be a hole in the harness's sandbox. The harness (Clau
 
 | Guarantee | Mechanism |
 |-----------|-----------|
-| LLM references profiles by name | `fetch --auth <name>`; never by value |
+| LLM references profiles by name | `fetch --profile <name>`; never by value |
 | LLM can't read stored secrets | `profile list/show` prints metadata only |
 | Profile off-URL is refused | Per-profile host[:port] + optional path allowlist |
-| Anonymous request must be explicit | `--no-auth` opt-in; no silent fallthrough |
+| Anonymous request must be explicit | `--profile none` opt-in; no silent fallthrough |
 | Plain http:// blocked for auth | Unless loopback or per-profile `allow_http` (set with `profile set-allow-http <name> true --token ...`) |
 | Redirects can't escape allowlist | `CheckRedirect` refuses cross-allowlist hops |
 | Upstream echoing of secrets is masked | Headers + JSON fields + literal byte echo redaction (always on) |
-| Sensitive cookies masked in `session show` | HttpOnly + name-pattern classification; human override via `mark-sensitive`/`mark-visible` |
-| Escalation requires re-asserting the primary secret | `profile allow / set-default-header / set-allow-http / session mark-visible` all overwrite the stored secret with what's supplied. Wrong value → silent break, no exfil |
-| Every request is audited | Append-only JSONL at `~/.config/agent-deepweb/audit.log` |
+| Cookie jars encrypted at rest | AES-256-GCM with per-profile random key alongside the primary secret |
+| BYO jar (`--cookiejar <path>`) is plaintext | The caller picked the path; explicit ownership of the contents |
+| Sensitive cookies masked in `jar show` | HttpOnly + name-pattern classification; human override via `mark-sensitive`/`mark-visible` |
+| Escalation requires re-asserting the primary secret | `profile allow / set-default-header / set-allow-http / jar mark-visible` all overwrite the stored secret with what's supplied. Wrong value → silent break, no exfil |
+| Every request is audited | Append-only JSONL at `~/.config/agent-deepweb/audit.log`, including `profile` and `jar` fields |
 
 The "primary secret re-assertion" replaces the v1 mode-gated refusals: it puts the asymmetry between humans (who know the secret) and LLMs (who don't) at the write itself, not in a soft env-var contract.
+
+### A note on jar encryption
+
+Mode 0600 on the jar file only protects against *other* UNIX users. An LLM running as the same UID as the human can read mode-0600 files directly. v2 fixes this for profile-bound jars by encrypting them with a per-profile AES-256-GCM key stored alongside the primary secret. On macOS that key lives in Keychain (real ACL); on Linux/Windows it's in the same `credentials.secrets.json` (so an LLM with shell access could grab both). BYO jars (`--cookiejar <path>`) are intentionally plaintext — the caller picked the path and owns the trade-off.
 
 ## Errors
 
 Errors go to stderr as JSON with a classification so the LLM knows what to do next:
 
 ```json
-{ "error": "no credential matches https://example.com/",
-  "hint": "Ask the user to register one with 'agent-deepweb profile add', or pass --no-auth to make an anonymous request explicitly.",
+{ "error": "no profile matches https://example.com/",
+  "hint": "Ask the user to register one with 'agent-deepweb profile add', or pass --profile none to make an anonymous request explicitly.",
   "fixable_by": "human" }
 ```
 
@@ -159,7 +172,7 @@ agent-deepweb profile list
 agent-deepweb profile show <name>
 agent-deepweb profile test <name>
 agent-deepweb profile add <name> --type <t> ...
-agent-deepweb profile remove <name>
+agent-deepweb profile remove <name>              Clears jar too
 agent-deepweb profile allow <name> <domain>      --token T   (re-supply primary secret)
 agent-deepweb profile disallow <name> <domain>
 agent-deepweb profile allow-path <name> <path>   --token T
@@ -170,13 +183,13 @@ agent-deepweb profile unset-default-header <name> K
 agent-deepweb profile set-allow-http <name> true --token T
 agent-deepweb profile set-user-agent <name> <ua>
 
-agent-deepweb login <name>                       Form-login flow
-agent-deepweb session status <name>
-agent-deepweb session show <name>                Cookies; sensitive values masked
-agent-deepweb session clear <name>
-agent-deepweb session set-expires <name> <d|ts>
-agent-deepweb session mark-sensitive <name> <c> [c2 ...]
-agent-deepweb session mark-visible   <name> <c> [c2 ...]   --token T
+agent-deepweb login <name>                       Form-login flow (writes to jar)
+agent-deepweb jar status <name>
+agent-deepweb jar show <name>                    Cookies; sensitive values masked
+agent-deepweb jar clear <name>
+agent-deepweb jar set-expires <name> <d|ts>
+agent-deepweb jar mark-sensitive <name> <c> [c2 ...]
+agent-deepweb jar mark-visible   <name> <c> [c2 ...]   --token T
 
 agent-deepweb audit tail [-n N]
 agent-deepweb audit summary
@@ -196,7 +209,7 @@ Per-command `llm-help` subcommands exist for all top-level verbs.
 ## Environment variables
 
 ```
-AGENT_DEEPWEB_AUTH               Default profile name.
+AGENT_DEEPWEB_PROFILE            Default profile name.
 AGENT_DEEPWEB_CONFIG_DIR         Override ~/.config/agent-deepweb (useful in tests).
 AGENT_DEEPWEB_TIMEOUT            Default request timeout in milliseconds.
 AGENT_DEEPWEB_USER_AGENT         Fallback User-Agent string.
@@ -217,13 +230,13 @@ agent-deepweb tpl show *
 agent-deepweb profile list
 agent-deepweb profile show *
 agent-deepweb profile test *
-agent-deepweb session status *
-agent-deepweb session show *
+agent-deepweb jar status *
+agent-deepweb jar show *
 agent-deepweb audit tail *
 agent-deepweb audit summary
 ```
 
-The harness denies everything else — including the escalation commands. agent-deepweb's primary-secret-re-assertion is a second line of defence in case the harness allowlist drifts.
+The harness denies everything else — including the escalation commands and direct file reads to `~/.config/agent-deepweb/`. agent-deepweb's primary-secret-re-assertion is a second line of defence in case the harness allowlist drifts.
 
 ## Development
 

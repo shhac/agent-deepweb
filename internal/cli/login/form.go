@@ -73,7 +73,7 @@ func doLogin(name string) error {
 			WithHint("Check the credential's --username / --password / --login-url with the user"))
 	}
 
-	sess := &credential.Session{Name: name, Acquired: time.Now().UTC()}
+	sess := &credential.Jar{Name: name, Acquired: time.Now().UTC()}
 	sess.HarvestResponse(resp, loginURL)
 	mergeJarCookies(sess, jar, loginURL)
 
@@ -95,11 +95,11 @@ func doLogin(name string) error {
 
 	sess.Expires = computeExpiry(sess, resolved.Secrets.SessionTTL)
 
-	if err := credential.WriteSession(sess); err != nil {
+	if err := credential.WriteJar(sess); err != nil {
 		return shared.FailHuman(err)
 	}
 
-	status, _ := credential.GetSessionStatus(name)
+	status, _ := credential.GetJarStatus(name)
 	output.PrintJSON(map[string]any{
 		"status":  "ok",
 		"session": status,
@@ -199,7 +199,7 @@ func performLoginRequest(resolved *credential.Resolved, loginURL *url.URL, body 
 // mergeJarCookies folds cookiejar-captured cookies into sess for cookies
 // that weren't already harvested from Set-Cookie response headers. This
 // catches cookies set by redirects or related subdomains.
-func mergeJarCookies(sess *credential.Session, jar http.CookieJar, loginURL *url.URL) {
+func mergeJarCookies(sess *credential.Jar, jar http.CookieJar, loginURL *url.URL) {
 	for _, c := range jar.Cookies(loginURL) {
 		dup := false
 		for _, existing := range sess.Cookies {
@@ -267,7 +267,7 @@ func extractJSONToken(body []byte, pathDot string) (string, error) {
 // computeExpiry picks the tightest expiry bound from (ttlStr, the latest
 // per-cookie expiry, a 24h fallback). A session never outlives its
 // cookies or the TTL the human set.
-func computeExpiry(s *credential.Session, ttlStr string) time.Time {
+func computeExpiry(s *credential.Jar, ttlStr string) time.Time {
 	now := time.Now().UTC()
 	const defaultTTL = 24 * time.Hour
 	earliest := now.Add(defaultTTL)

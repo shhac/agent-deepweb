@@ -27,7 +27,7 @@ func TestAppend_Concurrent(t *testing.T) {
 				Method:     "GET",
 				Host:       "example.com",
 				Path:       "/p",
-				Credential: "c",
+				Profile: "c",
 				Status:     200,
 				Outcome:    "ok",
 				Bytes:      i,

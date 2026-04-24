@@ -69,9 +69,9 @@ func RedactJSONBody(body []byte, contentType string) []byte {
 // Only needles longer than 4 bytes are considered — trivial values would
 // false-positive on common body text.
 //
-// For form-auth credentials, also masks the session token and sensitive
-// cookie values. The session is read from disk only when there's any
-// chance it contributes a needle — i.e. for form auth.
+// Also masks any sensitive cookie values stored in the profile's jar
+// (any profile type can have a jar in v2), and — for form-auth — the
+// session-acquired bearer token.
 func RedactSecretEcho(body []byte, resolved *credential.Resolved) []byte {
 	if resolved == nil {
 		return body
@@ -87,9 +87,9 @@ func RedactSecretEcho(body []byte, resolved *credential.Resolved) []byte {
 	return body
 }
 
-// gatherNeedles collects the secret values from resolved.Secrets (+ the
-// form-auth session, if any) that are long enough to redact safely.
-// Short values (≤ 4 bytes) are skipped to avoid false positives.
+// gatherNeedles collects the secret values from resolved.Secrets and
+// the profile's jar that are long enough to redact safely. Short values
+// (≤ 4 bytes) are skipped to avoid false positives.
 func gatherNeedles(resolved *credential.Resolved) []string {
 	var needles []string
 	add := func(s string) {
@@ -103,13 +103,11 @@ func gatherNeedles(resolved *credential.Resolved) []string {
 	for _, v := range resolved.Secrets.Headers {
 		add(v)
 	}
-	if resolved.Type == credential.AuthForm {
-		if sess, err := credential.ReadSession(resolved.Name); err == nil {
-			add(sess.Token)
-			for _, c := range sess.Cookies {
-				if c.Sensitive {
-					add(c.Value)
-				}
+	if jarState, err := credential.ReadJar(resolved.Name); err == nil {
+		add(jarState.Token)
+		for _, c := range jarState.Cookies {
+			if c.Sensitive {
+				add(c.Value)
 			}
 		}
 	}

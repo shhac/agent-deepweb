@@ -35,9 +35,9 @@ func BuildHTTPEnvelope(in EnvelopeIn) map[string]any {
 		"body":         RenderBody(in.ContentType, in.Body),
 	}
 	if in.Auth != nil {
-		env["auth"] = in.Auth.Name
+		env["profile"] = in.Auth.Name
 	} else {
-		env["auth"] = nil
+		env["profile"] = nil
 	}
 	return env
 }

@@ -17,13 +17,12 @@ import (
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
-	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
 )
 
 type opts struct {
-	auth            string
-	noAuth          bool
+	profile         string
+	cookieJar       string
 	method          string
 	headers         []string
 	queries         []string
@@ -61,8 +60,8 @@ func Register(root *cobra.Command, globals shared.Globals) {
 
 func bindFlags(cmd *cobra.Command, o *opts) {
 	f := cmd.Flags()
-	f.StringVar(&o.auth, "auth", "", "Credential alias (falls back to --auth on root or env)")
-	f.BoolVar(&o.noAuth, "no-auth", false, "Skip auth even if a credential matches the host")
+	f.StringVar(&o.profile, "profile", "", "Profile name, or 'none' for explicit anonymous (falls back to --profile on root or AGENT_DEEPWEB_PROFILE)")
+	f.StringVar(&o.cookieJar, "cookiejar", "", "Bring-your-own cookie jar (plaintext JSON file). Overrides the profile's encrypted default jar.")
 	f.StringVarP(&o.method, "method", "X", "", "HTTP method (default GET, or POST if body given)")
 	f.StringArrayVarP(&o.headers, "header", "H", nil, "Extra request header (repeatable)")
 	f.StringArrayVar(&o.queries, "query", nil, "URL query param key=value (repeatable)")
@@ -77,23 +76,15 @@ func bindFlags(cmd *cobra.Command, o *opts) {
 }
 
 func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
-	authName := shared.FirstNonEmpty(o.auth, g.Auth)
-	if authName != "" && o.noAuth {
-		return shared.Fail(agenterrors.New("--auth and --no-auth are mutually exclusive", agenterrors.FixableByAgent).
-			WithHint("Drop --no-auth or drop --auth"))
+	profileName := shared.FirstNonEmpty(o.profile, g.Profile)
+	auth, err := shared.ResolveProfile(rawURL, profileName)
+	if err != nil {
+		return shared.Fail(err)
 	}
-
-	var auth *credential.Resolved
-	if !o.noAuth {
-		a, err := shared.ResolveAuth(rawURL, authName)
-		if err != nil {
-			return shared.Fail(err)
-		}
-		auth = a
-	}
-	// Anonymous requests must opt in via --no-auth. ResolveAuth errors
-	// when no credential matches the URL, so reaching this point means
-	// either an explicit credential was picked or --no-auth was set.
+	// Anonymous requests must opt in via `--profile none`. ResolveProfile
+	// errors when no profile matches the URL and the flag is empty, so
+	// reaching this point means either an explicit profile was picked or
+	// `--profile none` was set.
 
 	body, contentType, err := buildBody(o)
 	if err != nil {
@@ -127,6 +118,7 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 		Query:     query,
 		Body:      body,
 		Auth:      auth,
+		JarPath:   o.cookieJar,
 		UserAgent: o.userAgent,
 	}, api.ClientOptions{
 		Timeout:         timeout,
