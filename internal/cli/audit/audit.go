@@ -79,23 +79,35 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		},
 	})
 
-	var pruneOlderThan string
+	var (
+		pruneOlderThan string
+		pruneOnlyTracks bool
+	)
 	pruneCmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove tracked records older than a duration (default TTL from AGENT_DEEPWEB_TRACK_TTL or 7 days)",
+		Short: "Remove expired tracked records (default: use each record's own ExpiresAt)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var d time.Duration
+			// --only-tracks is currently the default behaviour; the flag
+			// exists to make the target explicit and to leave room for
+			// future --only-log pruning of the audit JSONL.
+			_ = pruneOnlyTracks // accepted, no-op for now (always tracks)
+			var (
+				removed int
+				err     error
+			)
 			if pruneOlderThan != "" {
-				parsed, err := time.ParseDuration(pruneOlderThan)
-				if err != nil {
+				parsed, perr := time.ParseDuration(pruneOlderThan)
+				if perr != nil {
 					return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent,
-						"--older-than %q is not a valid duration (e.g. 24h, 7d-equivalent 168h)", pruneOlderThan))
+						"--older-than %q is not a valid duration (e.g. 24h, 168h)", pruneOlderThan))
 				}
-				d = parsed
+				removed, err = track.PruneOlderThan(parsed)
 			} else {
-				d = track.DefaultTTL
+				// Default: respect each record's own ExpiresAt so old
+				// records don't outlive their original contract just
+				// because the config TTL was bumped later.
+				removed, err = track.PruneExpired()
 			}
-			removed, err := track.PruneOlderThan(d)
 			if err != nil {
 				return shared.FailHuman(err)
 			}
@@ -103,7 +115,8 @@ func Register(root *cobra.Command, _ shared.Globals) {
 			return nil
 		},
 	}
-	pruneCmd.Flags().StringVar(&pruneOlderThan, "older-than", "", "Duration threshold (default: AGENT_DEEPWEB_TRACK_TTL or 7 days)")
+	pruneCmd.Flags().StringVar(&pruneOlderThan, "older-than", "", "Ignore each record's ExpiresAt; prune anything older than this duration (e.g. 24h, 168h)")
+	pruneCmd.Flags().BoolVar(&pruneOnlyTracks, "only-tracks", true, "Target only tracked records (default; the audit log itself is not currently prunable)")
 	cmd.AddCommand(pruneCmd)
 
 	root.AddCommand(cmd)
@@ -130,11 +143,14 @@ SUMMARY
   'audit show <id>'.
 
 DISABLING
-  Set AGENT_DEEPWEB_AUDIT=off to disable writing the audit log (the
-  file is not touched until the next request). Default is on.
+  Set 'agent-deepweb config set audit.enabled false' to disable writing
+  the audit log (the file is not touched until the next request).
+  Default is on.
 
   Tracked records are only written when a caller passes --track; they
-  respect the TTL set by AGENT_DEEPWEB_TRACK_TTL (default 7 days).
+  respect the TTL set by 'agent-deepweb config set track.ttl <duration>'
+  (default 168h / 7 days). Each record stamps its own expires_at at
+  write time, so bumping the TTL later affects only new records.
 
 ENTRY SHAPE
   { "ts":"2026-04-23T16:00:00Z",

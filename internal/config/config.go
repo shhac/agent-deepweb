@@ -1,5 +1,9 @@
-// Package config handles agent-deepweb's on-disk configuration directory.
-// Also holds user-tunable defaults (timeout, max-size, redaction rules).
+// Package config handles agent-deepweb's on-disk configuration directory
+// and user-tunable defaults. Values are persisted to config.json; the
+// agent-deepweb config {list-keys,get,set,unset} commands manage them.
+//
+// Every config key has a matching per-invocation CLI flag; precedence
+// is flag > config > built-in default.
 package config
 
 import (
@@ -10,22 +14,37 @@ import (
 )
 
 type Config struct {
-	Defaults Defaults `json:"defaults"`
+	Defaults Defaults `json:"defaults,omitempty"`
+	Audit    Audit    `json:"audit,omitempty"`
+	Track    Track    `json:"track,omitempty"`
 }
 
 type Defaults struct {
-	TimeoutMS int   `json:"timeout_ms,omitempty"` // default request timeout
-	MaxBytes  int64 `json:"max_bytes,omitempty"`  // cap on response body size
-	Redact    bool  `json:"redact,omitempty"`     // apply redaction by default (default: true)
+	TimeoutMS int    `json:"timeout_ms,omitempty"` // default request timeout (ms)
+	MaxBytes  int64  `json:"max_bytes,omitempty"`  // response body size cap (bytes)
+	UserAgent string `json:"user_agent,omitempty"` // fallback User-Agent
+	Profile   string `json:"profile,omitempty"`    // fallback profile name
 }
 
-// Default values used when a zero-value TimeoutMS/MaxBytes is encountered.
-// Duplicated nowhere — both config.applyDefaults and api.ClientOptions
-// applyDefaults reference these so the "what's the baseline" answer has
-// exactly one source of truth.
+type Audit struct {
+	// Enabled is a pointer so a missing value (use default true) is
+	// distinguishable from an explicit false. Callers use Enabled() for
+	// the effective value.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type Track struct {
+	TTL string `json:"ttl,omitempty"` // Go duration string; controls new record expires_at
+}
+
+// Built-in defaults applied when a zero-value is encountered. The only
+// source of truth for "what's the baseline" — don't duplicate these
+// constants elsewhere.
 const (
-	DefaultTimeoutMS = 30_000           // 30s — plenty of slack for most APIs
+	DefaultTimeoutMS = 30_000           // 30s
 	DefaultMaxBytes  = 10 * 1024 * 1024 // 10 MiB response cap
+	DefaultTrackTTL  = "168h"           // 7 days
+	DefaultAudit     = true
 )
 
 var (
@@ -44,6 +63,9 @@ func SetConfigDir(dir string) {
 
 // ConfigDir returns the directory where agent-deepweb stores its state.
 // Order: AGENT_DEEPWEB_CONFIG_DIR > XDG_CONFIG_HOME/agent-deepweb > ~/.config/agent-deepweb.
+// This is the ONE remaining env-var indirection in v0.4 — it has to
+// exist (tests and portable setups depend on pointing the config
+// somewhere non-default).
 func ConfigDir() string {
 	if overrideDir != "" {
 		return overrideDir
@@ -62,6 +84,9 @@ func configPath() string {
 	return filepath.Join(ConfigDir(), "config.json")
 }
 
+// Read returns the in-memory config view, loading from disk on first
+// access and caching after. ClearCache() invalidates; Write() does so
+// automatically.
 func Read() *Config {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
@@ -117,17 +142,16 @@ func applyDefaults(cfg *Config) {
 	if cfg.Defaults.MaxBytes == 0 {
 		cfg.Defaults.MaxBytes = DefaultMaxBytes
 	}
-	// Redact defaults to true. We represent that by having the boolean
-	// only be "false" when explicitly disabled — read callers should call
-	// RedactEnabled() rather than Defaults.Redact directly.
+	if cfg.Track.TTL == "" {
+		cfg.Track.TTL = DefaultTrackTTL
+	}
 }
 
-// RedactEnabled returns true unless the user has explicitly disabled it in config.
-// Note: agent mode always redacts regardless of this setting — checked at call site.
-func (c *Config) RedactEnabled() bool {
-	// JSON zero value is false; treat explicit-false only when user wrote it.
-	// For v1 simplicity, we return true always from config and let --no-redact
-	// be the per-request escape hatch (human-only). A future 'config set' can
-	// expose a setting; for now, config.Redact is informational.
-	return true
+// AuditEnabled returns the effective audit-enabled value. Default true
+// when the user hasn't set audit.enabled.
+func (c *Config) AuditEnabled() bool {
+	if c.Audit.Enabled == nil {
+		return DefaultAudit
+	}
+	return *c.Audit.Enabled
 }

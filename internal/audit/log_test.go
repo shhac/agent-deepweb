@@ -42,11 +42,18 @@ func TestAppendAndTail(t *testing.T) {
 func TestDisabledSkipsWrites(t *testing.T) {
 	dir := t.TempDir()
 	config.SetConfigDir(dir)
-	t.Cleanup(func() { config.SetConfigDir("") })
+	t.Cleanup(func() { config.SetConfigDir(""); config.ClearCache() })
 
-	t.Setenv("AGENT_DEEPWEB_AUDIT", "off")
+	// Disable auditing via config (replaces the v0.3-era AGENT_DEEPWEB_AUDIT env).
+	c := config.Read()
+	off := false
+	c.Audit.Enabled = &off
+	if err := config.Write(c); err != nil {
+		t.Fatal(err)
+	}
+	config.ClearCache()
+
 	Append(Entry{Method: "GET", Host: "x"})
-	// File should not exist.
 	if _, err := os.Stat(dir + "/audit.log"); !os.IsNotExist(err) {
 		t.Fatalf("expected no audit file, stat err=%v", err)
 	}

@@ -1,18 +1,18 @@
 package cli
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/audit"
-	"github.com/shhac/agent-deepweb/internal/cli/profile"
+	configcli "github.com/shhac/agent-deepweb/internal/cli/config"
 	"github.com/shhac/agent-deepweb/internal/cli/fetch"
 	"github.com/shhac/agent-deepweb/internal/cli/graphql"
 	"github.com/shhac/agent-deepweb/internal/cli/login"
+	"github.com/shhac/agent-deepweb/internal/cli/profile"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	templatecli "github.com/shhac/agent-deepweb/internal/cli/template"
+	"github.com/shhac/agent-deepweb/internal/config"
 )
 
 var (
@@ -39,12 +39,14 @@ func newRootCmd(version string) *cobra.Command {
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "Profile name, or 'none' for explicit anonymous (or AGENT_DEEPWEB_PROFILE)")
+	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "Profile name, or 'none' for explicit anonymous (falls back to config 'default.profile')")
 	root.PersistentFlags().StringVar(&flagFormat, "format", "", "Output format: json, jsonl, raw, text")
-	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 0, "Request timeout in milliseconds")
+	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 0, "Request timeout in milliseconds (falls back to config 'default.timeout-ms')")
 
-	if envProfile := os.Getenv("AGENT_DEEPWEB_PROFILE"); envProfile != "" && flagProfile == "" {
-		flagProfile = envProfile
+	// Precedence for --profile: flag > config.default.profile > empty.
+	// No env var — config replaces AGENT_DEEPWEB_PROFILE in v0.4.
+	if flagProfile == "" {
+		flagProfile = config.Read().Defaults.Profile
 	}
 
 	registerUsageCommand(root)
@@ -54,6 +56,7 @@ func newRootCmd(version string) *cobra.Command {
 	login.Register(root, allGlobals)
 	audit.Register(root, allGlobals)
 	templatecli.Register(root, allGlobals)
+	configcli.Register(root, allGlobals)
 
 	return root
 }

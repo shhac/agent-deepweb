@@ -41,15 +41,11 @@ type Entry struct {
 	FixableBy  string `json:"fixable_by,omitempty"`
 }
 
-// Enabled reports whether auditing is on. Controlled by AGENT_DEEPWEB_AUDIT:
-// "", "on", "true", "1" → on (the default). "off", "false", "0" → off.
+// Enabled reports whether auditing is on. Controlled by the config key
+// audit.enabled (set via 'agent-deepweb config set audit.enabled false'
+// to disable). Defaults to true.
 func Enabled() bool {
-	switch strings.ToLower(os.Getenv("AGENT_DEEPWEB_AUDIT")) {
-	case "off", "false", "0", "no":
-		return false
-	default:
-		return true
-	}
+	return config.Read().AuditEnabled()
 }
 
 func logPath() string {

@@ -197,13 +197,17 @@ The new type automatically gets an encrypted jar — `Store` provisions a fresh 
 
 ---
 
-## Env vars
+## Config + env vars
 
-- `AGENT_DEEPWEB_PROFILE` — default profile name for `--profile`
-- `AGENT_DEEPWEB_CONFIG_DIR` — override `~/.config/agent-deepweb` (use in tests!)
-- `AGENT_DEEPWEB_TIMEOUT` — default request timeout (ms)
-- `AGENT_DEEPWEB_USER_AGENT` — fallback User-Agent
-- `AGENT_DEEPWEB_AUDIT=off` — disable audit log writes
+Persistent user config lives at `~/.config/agent-deepweb/config.json` and is managed via `agent-deepweb config {list-keys,get,set,unset}`. Keys:
+
+- `default.timeout-ms` / `default.max-bytes` / `default.user-agent` / `default.profile`
+- `audit.enabled` (bool)
+- `track.ttl` (Go duration)
+
+Precedence: **per-invocation flag > config value > built-in default**.
+
+The only remaining env var is `AGENT_DEEPWEB_CONFIG_DIR` (points at the config dir itself; used in tests). All other v0.3-era env vars (`AGENT_DEEPWEB_PROFILE`, `AGENT_DEEPWEB_TIMEOUT`, `AGENT_DEEPWEB_USER_AGENT`, `AGENT_DEEPWEB_AUDIT`, `AGENT_DEEPWEB_TRACK_TTL`) are gone — their equivalents live in the config.
 
 ---
 

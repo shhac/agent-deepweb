@@ -60,11 +60,16 @@ COMMON WORKFLOWS
 
 GLOBAL FLAGS
   --profile <name>                   Profile name, or 'none' for explicit anonymous
-                                     (or AGENT_DEEPWEB_PROFILE env)
+                                     (falls back to config 'default.profile')
   --cookiejar <path>                 Bring-your-own cookie jar (plaintext JSON file).
                                      Overrides the profile's encrypted default.
   --format json|jsonl|raw|text       Output format (default: json)
-  --timeout <ms>                     Request timeout in milliseconds
+  --timeout <ms>                     Request timeout in ms (falls back to config 'default.timeout-ms')
+
+CONFIG
+  Persistent user config lives at ~/.config/agent-deepweb/config.json
+  and is managed via 'agent-deepweb config {list-keys,get,set,unset}'.
+  Precedence: per-invocation flag > config value > built-in default.
 
 ERROR HANDLING
   fixable_by: agent  — your input was wrong (typo, bad URL, bad JSON); fix and retry
@@ -89,10 +94,11 @@ SECRET-SAFETY RULES
 PER-VERB REFERENCE (run these for detailed help)
   fetch llm-help                     fetch command reference
   graphql llm-help                   graphql command reference
-  tpl llm-help                       template commands reference
+  template llm-help                  template commands reference
   profile llm-help                   profile commands reference
   login llm-help                     login / jar commands reference
   audit llm-help                     audit log commands reference
+  config llm-help                    persistent user config
 
 PROFILE MANAGEMENT (typically human-run; LLMs without secret values
 get useless results which are themselves an audit signal)

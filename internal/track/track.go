@@ -7,9 +7,13 @@
 //
 // Records are written to ~/.config/agent-deepweb/track/<id>.json, mode
 // 0600. IDs are time-sortable (YYYYMMDDTHHMM-<4hex>) so a directory
-// scan is cheap to filter by age. The default TTL is 7 days, overridable
-// via AGENT_DEEPWEB_TRACK_TTL (Go duration string). Every Write does a
-// lazy prune of expired records.
+// scan is cheap to filter by age.
+//
+// Each record stores its own ExpiresAt (= write-time + current
+// track.ttl). Prune compares now against ExpiresAt, so changing the
+// config later affects only new records — old ones keep their original
+// lifetime. Default TTL is 168h (7 days), set via
+// 'agent-deepweb config set track.ttl <duration>'.
 package track
 
 import (
@@ -26,11 +30,6 @@ import (
 	"github.com/shhac/agent-deepweb/internal/config"
 )
 
-// DefaultTTL is how long a tracked record lives before being eligible
-// for lazy pruning. Short enough that the directory stays tidy; long
-// enough that "what did I do yesterday?" still works.
-const DefaultTTL = 7 * 24 * time.Hour
-
 // Record is a persisted full-fidelity view of one request/response.
 // All header/body fields are already redacted — we don't re-redact
 // on read. Sensitive cookies in response headers and auth headers
@@ -38,14 +37,20 @@ const DefaultTTL = 7 * 24 * time.Hour
 type Record struct {
 	ID        string    `json:"id"`
 	Timestamp time.Time `json:"ts"`
-	Profile   string    `json:"profile,omitempty"` // profile name, "none" for --profile none, "" for ad-hoc
-	Template  string    `json:"template,omitempty"`
-	Request   Request   `json:"request"`
-	Response  Response  `json:"response"`
-	Outcome   string    `json:"outcome"`             // "ok" | "error"
-	Error     string    `json:"error,omitempty"`     // error message when outcome=error
-	FixableBy string    `json:"fixable_by,omitempty"`
-	DurationMS int64    `json:"duration_ms"`
+	// ExpiresAt is set at write time (= ts + current config.track.ttl).
+	// Prune compares now against this value rather than computing
+	// ts + current-ttl, so changing the TTL later affects only new
+	// records. A zero ExpiresAt (records from before this field
+	// existed) is treated as "unbounded" — caller must delete manually.
+	ExpiresAt  time.Time `json:"expires_at,omitempty"`
+	Profile    string    `json:"profile,omitempty"` // profile name, "none" for --profile none, "" for ad-hoc
+	Template   string    `json:"template,omitempty"`
+	Request    Request   `json:"request"`
+	Response   Response  `json:"response"`
+	Outcome    string    `json:"outcome"`             // "ok" | "error"
+	Error      string    `json:"error,omitempty"`     // error message when outcome=error
+	FixableBy  string    `json:"fixable_by,omitempty"`
+	DurationMS int64     `json:"duration_ms"`
 }
 
 // Request is the outbound side of a tracked record.
@@ -88,9 +93,14 @@ func recordPath(id string) string {
 }
 
 // Write persists r to disk (mode 0600) and lazy-prunes expired records.
-// The prune is best-effort: any scan/unlink error is silently ignored
-// so a temporary filesystem hiccup doesn't fail the caller's request.
+// If r.ExpiresAt is zero, it's set to r.Timestamp + current config
+// track.ttl. The prune is best-effort: any scan/unlink error is
+// silently ignored so a temporary filesystem hiccup doesn't fail the
+// caller's request.
 func Write(r *Record) error {
+	if r.ExpiresAt.IsZero() {
+		r.ExpiresAt = r.Timestamp.Add(config.Read().TrackTTL())
+	}
 	if err := os.MkdirAll(trackDir(), 0o700); err != nil {
 		return err
 	}
@@ -101,7 +111,7 @@ func Write(r *Record) error {
 	if err := os.WriteFile(recordPath(r.ID), append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	_, _ = PruneOlderThan(ttlFromEnv())
+	_, _ = PruneExpired()
 	return nil
 }
 
@@ -119,10 +129,27 @@ func Read(id string) (*Record, error) {
 	return &r, nil
 }
 
-// PruneOlderThan removes every record whose Timestamp is older than
-// now - d. Returns the count removed. Errors on individual entries are
-// silently skipped so one bad file doesn't block the rest.
+// PruneExpired removes every record whose stored ExpiresAt is in the
+// past. The lazy-prune call site in Write uses this; the `audit prune`
+// CLI verb calls this by default.
+func PruneExpired() (int, error) {
+	return pruneWhere(func(r *Record) bool {
+		return !r.ExpiresAt.IsZero() && time.Now().After(r.ExpiresAt)
+	})
+}
+
+// PruneOlderThan is the explicit-duration variant used by
+// `audit prune --older-than <dur>`. Matches on Timestamp (not
+// ExpiresAt) so a human can retro-actively delete "everything older
+// than N" regardless of per-record TTL.
 func PruneOlderThan(d time.Duration) (int, error) {
+	cutoff := time.Now().Add(-d)
+	return pruneWhere(func(r *Record) bool {
+		return r.Timestamp.Before(cutoff)
+	})
+}
+
+func pruneWhere(should func(*Record) bool) (int, error) {
 	entries, err := os.ReadDir(trackDir())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -130,7 +157,6 @@ func PruneOlderThan(d time.Duration) (int, error) {
 		}
 		return 0, err
 	}
-	cutoff := time.Now().Add(-d)
 	removed := 0
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
@@ -141,7 +167,7 @@ func PruneOlderThan(d time.Duration) (int, error) {
 		if err != nil {
 			continue
 		}
-		if r.Timestamp.Before(cutoff) {
+		if should(r) {
 			if err := os.Remove(recordPath(id)); err == nil {
 				removed++
 			}
@@ -180,18 +206,3 @@ func PruneByProfile(name string) (int, error) {
 	return removed, nil
 }
 
-// ttlFromEnv reads AGENT_DEEPWEB_TRACK_TTL (a Go duration string like
-// "168h" or "7d"-equivalent "168h") and returns the parsed duration, or
-// DefaultTTL on missing/malformed input. Unparseable input is silently
-// ignored rather than failing the caller's request.
-func ttlFromEnv() time.Duration {
-	v := os.Getenv("AGENT_DEEPWEB_TRACK_TTL")
-	if v == "" {
-		return DefaultTTL
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d <= 0 {
-		return DefaultTTL
-	}
-	return d
-}

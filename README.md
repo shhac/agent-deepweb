@@ -208,14 +208,23 @@ Per-command `llm-help` subcommands exist for all top-level verbs.
 --format jsonl    Line-delimited JSON (where applicable).
 ```
 
+## Config
+
+Persistent user config is managed via `agent-deepweb config {list-keys,get,set,unset}` and persisted at `~/.config/agent-deepweb/config.json`. Keys:
+
+- `default.timeout-ms` — default request timeout (ms; built-in 30000)
+- `default.max-bytes` — response body size cap (bytes; built-in 10 MiB)
+- `default.user-agent` — fallback User-Agent
+- `default.profile` — fallback profile name when `--profile` is omitted
+- `audit.enabled` — write the audit log (built-in true)
+- `track.ttl` — how long tracked records live (built-in 168h / 7 days)
+
+Precedence at call time: **per-invocation flag > config value > built-in default**.
+
 ## Environment variables
 
 ```
-AGENT_DEEPWEB_PROFILE            Default profile name.
 AGENT_DEEPWEB_CONFIG_DIR         Override ~/.config/agent-deepweb (useful in tests).
-AGENT_DEEPWEB_TIMEOUT            Default request timeout in milliseconds.
-AGENT_DEEPWEB_USER_AGENT         Fallback User-Agent string.
-AGENT_DEEPWEB_AUDIT=off          Disable audit-log writes.
 ```
 
 ## Claude Code skill

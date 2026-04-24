@@ -4,14 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
 )
-
-// envGet is a thin wrapper so tests can stub env lookups.
-var envGet = func(key string) string { return os.Getenv(key) }
 
 // buildHTTPRequest composes the *http.Request from a high-level Request
 // struct. Header application order matters:
@@ -62,7 +59,7 @@ func buildHTTPRequest(ctx context.Context, req Request) (*http.Request, error) {
 //  1. per-request UserAgent field
 //  2. credential's UserAgent
 //  3. user-set Header "User-Agent" (via --header 'User-Agent: ...')
-//  4. AGENT_DEEPWEB_USER_AGENT env var
+//  4. config key default.user-agent
 //  5. default "agent-deepweb/<Version>"
 func resolveUserAgent(req Request) string {
 	if req.UserAgent != "" {
@@ -74,8 +71,8 @@ func resolveUserAgent(req Request) string {
 	if hv, ok := req.Headers["User-Agent"]; ok && hv != "" {
 		return hv
 	}
-	if env := strings.TrimSpace(envGet("AGENT_DEEPWEB_USER_AGENT")); env != "" {
-		return env
+	if cfgUA := strings.TrimSpace(config.Read().Defaults.UserAgent); cfgUA != "" {
+		return cfgUA
 	}
 	return "agent-deepweb/" + Version
 }
