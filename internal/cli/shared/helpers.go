@@ -35,6 +35,20 @@ func FailHuman(err error) error { return Fail(agenterrors.Wrap(err, agenterrors.
 // FailAgent wraps a plain error as fixable_by:agent and emits via Fail.
 func FailAgent(err error) error { return Fail(agenterrors.Wrap(err, agenterrors.FixableByAgent)) }
 
+// RequirePrefix is the shared "--prefix is required" guard used by
+// every import-* CLI command. --prefix namespaces the imported
+// templates so two imports from different sources can't collide;
+// empty-prefix is always a human mistake. Returns a classified
+// fixable_by:human error suitable for shared.Fail.
+func RequirePrefix(prefix string) error {
+	if prefix != "" {
+		return nil
+	}
+	return agenterrors.New(
+		"--prefix is required (chooses the name-space for imported templates, e.g. 'myapi')",
+		agenterrors.FixableByHuman)
+}
+
 // PrintOK emits the canonical {"status":"ok", ...} success envelope to
 // stdout. Merges extras into the map; extras override "status" if the
 // caller really wants to (rare). Replaces the 15 inline `output.PrintJSON(

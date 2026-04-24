@@ -18,12 +18,10 @@ func registerImportHTTP(parent *cobra.Command) {
 		Short: "Import templates from a .http file (VS Code REST Client / JetBrains HTTP Client) (human-only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if prefix == "" {
-				return shared.Fail(agenterrors.New(
-					"--prefix is required",
-					agenterrors.FixableByHuman))
+			if err := shared.RequirePrefix(prefix); err != nil {
+				return shared.Fail(err)
 			}
-			imported, err := template.ImportHTTPFile(args[0], template.ImportHTTPFileOptions{
+			imported, err := importers.ImportHTTPFile(args[0], importers.ImportHTTPFileOptions{
 				Prefix:  prefix,
 				Profile: profile,
 			})

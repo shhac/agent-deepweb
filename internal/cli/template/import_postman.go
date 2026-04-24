@@ -19,17 +19,15 @@ func registerImportPostman(parent *cobra.Command) {
 		Short: "Import templates from a Postman Collection v2.1 JSON file (human-only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if prefix == "" {
-				return shared.Fail(agenterrors.New(
-					"--prefix is required (chooses the name-space for imported templates, e.g. 'myapi')",
-					agenterrors.FixableByHuman))
+			if err := shared.RequirePrefix(prefix); err != nil {
+				return shared.Fail(err)
 			}
-			opts := template.ImportPostmanOptions{
+			opts := importers.ImportPostmanOptions{
 				Prefix:     prefix,
 				Profile:    profile,
 				FolderPath: folderPath,
 			}
-			imported, err := template.ImportPostmanFile(args[0], opts)
+			imported, err := importers.ImportPostmanFile(args[0], opts)
 			if err != nil {
 				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman).
 					WithHint("Export your Postman collection as 'Collection v2.1' — v2.0 also works; older versions do not."))

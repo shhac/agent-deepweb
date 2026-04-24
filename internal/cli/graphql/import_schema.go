@@ -33,10 +33,8 @@ func registerImportSchema(parent *cobra.Command) {
 		Short: "Introspect a GraphQL endpoint and store one template per Query/Mutation field (human-only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if prefix == "" {
-				return shared.Fail(agenterrors.New(
-					"--prefix is required (chooses the name-space for imported templates, e.g. 'gh')",
-					agenterrors.FixableByHuman))
+			if err := shared.RequirePrefix(prefix); err != nil {
+				return shared.Fail(err)
 			}
 			endpoint := args[0]
 			auth, err := shared.ResolveProfile(endpoint, profile)

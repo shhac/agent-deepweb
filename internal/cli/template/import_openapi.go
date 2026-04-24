@@ -26,18 +26,16 @@ func registerImportOpenAPI(parent *cobra.Command) {
 		Short: "Import one template per operation from an OpenAPI v3 JSON spec (human-only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if prefix == "" {
-				return shared.Fail(agenterrors.New(
-					"--prefix is required (chooses the name-space for imported templates, e.g. 'github')",
-					agenterrors.FixableByHuman))
+			if err := shared.RequirePrefix(prefix); err != nil {
+				return shared.Fail(err)
 			}
-			opts := template.ImportOpenAPIOptions{
+			opts := importers.ImportOpenAPIOptions{
 				Prefix:         prefix,
 				Profile:        profile,
 				TagFilter:      tags,
 				ServerOverride: serverOverride,
 			}
-			imported, err := template.ImportOpenAPIFile(args[0], opts)
+			imported, err := importers.ImportOpenAPIFile(args[0], opts)
 			if err != nil {
 				return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman).
 					WithHint("YAML specs must be converted to JSON first (e.g. 'yq -o=json . spec.yaml > spec.json')"))

@@ -26,12 +26,10 @@ cookie, x-csrf-*, x-api-key, x-xsrf-*) — the templates should be
 re-run with a real --profile attached, not the stale capture.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if prefix == "" {
-				return shared.Fail(agenterrors.New(
-					"--prefix is required",
-					agenterrors.FixableByHuman))
+			if err := shared.RequirePrefix(prefix); err != nil {
+				return shared.Fail(err)
 			}
-			imported, err := template.ImportHARFile(args[0], template.ImportHAROptions{
+			imported, err := importers.ImportHARFile(args[0], importers.ImportHAROptions{
 				Prefix:      prefix,
 				Profile:     profile,
 				URLContains: urlContains,
