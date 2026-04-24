@@ -89,27 +89,10 @@ func Store(c Credential, s Secrets) (storage string, err error) {
 	if err != nil {
 		return "", err
 	}
-	if len(s.JarKey) == 0 {
-		if existing, err := loadStoredSecrets(c.Name, idx); err == nil && len(existing.JarKey) > 0 {
-			s.JarKey = existing.JarKey
-		} else {
-			k, err := generateJarKey()
-			if err != nil {
-				return "", err
-			}
-			s.JarKey = k
-		}
+	if err := provisionJarKey(c.Name, &s, idx); err != nil {
+		return "", err
 	}
-	// Auto-populate the passphrase when the caller didn't set one. On
-	// initial add, this defaults to the primary-secret representative
-	// value (so an existing user who never set --passphrase can still
-	// escalate by typing the primary secret). On subsequent Store calls
-	// (set-secret, etc.) the caller is responsible for passing the
-	// right Passphrase — we only fill in the blank.
-	if s.Passphrase == "" {
-		s.Passphrase = DefaultPassphrase(c.Type, s)
-		s.PassphraseAutoDerived = true
-	}
+	provisionPassphrase(c, &s)
 	entry := entryFromCredential(c)
 
 	if DefaultBackend.Available() {
@@ -144,6 +127,42 @@ func Store(c Credential, s Secrets) (storage string, err error) {
 		return "", err
 	}
 	return "file", nil
+}
+
+// provisionJarKey ensures s.JarKey is populated before Store persists.
+// Precedence: caller-supplied key > existing key for this profile
+// (preserves jar encryption across mutations) > freshly-generated key.
+// Returns an error only if generation fails — everything else is
+// idempotent and non-destructive.
+func provisionJarKey(name string, s *Secrets, idx map[string]indexEntry) error {
+	if len(s.JarKey) > 0 {
+		return nil
+	}
+	if existing, err := loadStoredSecrets(name, idx); err == nil && len(existing.JarKey) > 0 {
+		s.JarKey = existing.JarKey
+		return nil
+	}
+	k, err := generateJarKey()
+	if err != nil {
+		return err
+	}
+	s.JarKey = k
+	return nil
+}
+
+// provisionPassphrase auto-populates s.Passphrase when the caller
+// didn't supply one. Default is the primary-secret representative
+// value for this auth type — so an existing user who never ran
+// `profile add --passphrase` can still escalate by retyping the
+// token/password. On subsequent Store calls (set-secret, etc.) the
+// caller is responsible for passing the right Passphrase; we only
+// fill in the blank.
+func provisionPassphrase(c Credential, s *Secrets) {
+	if s.Passphrase != "" {
+		return
+	}
+	s.Passphrase = DefaultPassphrase(c.Type, *s)
+	s.PassphraseAutoDerived = true
 }
 
 // Remove deletes the credential and its secret material AND clears the
