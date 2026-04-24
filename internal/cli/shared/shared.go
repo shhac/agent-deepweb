@@ -58,7 +58,7 @@ func ResolveProfile(rawURL, profileFlag string) (*credential.Resolved, error) {
 		if !c.MatchesURL(u) {
 			return nil, agenterrors.Newf(agenterrors.FixableByHuman,
 				"profile %q is not allowed on %s (host/path not in allowlist)", profileFlag, rawURL).
-				WithHint("Ask the user to run 'agent-deepweb profile allow " + profileFlag + " " + u.Host + "' or widen --path")
+				WithHint("Ask the user to run 'agent-deepweb profile allow " + profileFlag + " " + u.Host + " " + credential.PrimarySecretFlagHint(c.Type) + "'.")
 		}
 		return c, nil
 	}

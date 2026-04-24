@@ -34,4 +34,37 @@ STATUS
     2. Harvest Set-Cookie headers; classify each cookie sensitive or visible.
     3. Optionally extract a bearer token from a JSON body via --token-path.
     4. Compute jar expiry as min(session-ttl, latest-cookie-expiry, +24h).
+
+CUSTOM LOGIN BODIES (--login-body-template)
+  Some APIs don't accept a flat {username, password} body — GraphQL-mutation
+  logins and OAuth2 password-grant bodies are common examples. Use
+  --login-body-template to supply the full JSON body as a template with
+  {{username}} / {{password}} / {{<extra-field>}} placeholders; substituted
+  values are JSON-string-escaped so embedded quotes don't corrupt the
+  output. Content-Type is forced to application/json when this is set.
+
+  Example — GraphQL mutation login:
+    agent-deepweb profile add myapi --type form \
+      --login-url https://api.example.com/graphql \
+      --username alice --password 'pw' \
+      --login-body-template '{"query":"mutation($u:String!,$p:String!){ signIn(input:{username:$u,password:$p}){ tokens { bearer }}}","variables":{"u":"{{username}}","p":"{{password}}"}}' \
+      --token-path data.signIn.tokens.bearer \
+      --domain api.example.com
+    agent-deepweb login myapi
+
+  Example — OAuth2 password-grant body:
+    agent-deepweb profile add myapi --type form \
+      --login-url https://auth.example.com/oauth/token \
+      --username alice --password 'pw' \
+      --extra-field grant_type=password --extra-field client_id=abc \
+      --login-body-template '{"grant_type":"{{grant_type}}","client_id":"{{client_id}}","username":"{{username}}","password":"{{password}}"}' \
+      --token-path access_token \
+      --domain auth.example.com
+
+  Rules of thumb:
+    - Always place placeholders INSIDE JSON string quotes: "u":"{{username}}".
+    - An unknown {{placeholder}} fails loudly with fixable_by:human —
+      typos don't silently produce broken logins.
+    - The whole body must be valid JSON; we validate post-substitution
+      and fail before making the request if it isn't.
 `

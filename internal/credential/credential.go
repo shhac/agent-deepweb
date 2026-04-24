@@ -78,6 +78,15 @@ type Secrets struct {
 	TokenPath     string            `json:"token_path,omitempty"`
 	SessionTTL    string            `json:"session_ttl,omitempty"`
 
+	// LoginBodyTemplate, if set, overrides the default form/JSON login
+	// body construction. The template is a JSON string with `{{username}}`,
+	// `{{password}}`, and `{{<extra-field-name>}}` placeholders; substituted
+	// values are JSON-string-escaped so embedded quotes/backslashes don't
+	// produce malformed output. Content-Type is forced to application/json
+	// when this is set. Use for odd login shapes — GraphQL-mutation logins,
+	// OAuth password-grant bodies that don't fit flat form/JSON, etc.
+	LoginBodyTemplate string `json:"login_body_template,omitempty"`
+
 	// JarKey is a 32-byte AES-256 key used to encrypt the profile's jar
 	// file (profiles/<name>/jar.json). Provisioned at profile-add time
 	// and preserved across mutations; cleared on profile remove. Stored
@@ -96,6 +105,28 @@ type Resolved struct {
 type NotFoundError struct{ Name string }
 
 func (e *NotFoundError) Error() string { return fmt.Sprintf("profile %q not found", e.Name) }
+
+// PrimarySecretFlagHint returns the flag(s) a human must pass to escalate
+// a profile of the given auth type. Used in human-fixable hint text so
+// the exact command to run is obvious, not just "re-supply the primary
+// secret." Returns "--token <T>" for bearer/custom, "--username <U>
+// --password <P>" for basic/form, etc.
+func PrimarySecretFlagHint(authType string) string {
+	switch authType {
+	case AuthBearer:
+		return "--token <T>"
+	case AuthBasic:
+		return "--username <U> --password <P>"
+	case AuthCookie:
+		return "--cookie <C>"
+	case AuthCustom:
+		return "--custom-header 'K: V'"
+	case AuthForm:
+		return "--username <U> --password <P>"
+	default:
+		return "--token <T>"
+	}
+}
 
 // indexEntry is the on-disk JSON shape for a single credential's metadata.
 // When KeychainManaged is false (non-macOS), the matching Secrets live

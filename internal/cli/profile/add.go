@@ -39,17 +39,18 @@ type addOpts struct {
 	customHeaders []string
 
 	// form login
-	loginURL        string
-	loginMethod     string
-	loginFormat     string
-	usernameField   string
-	passwordField   string
-	extraFields     []string
-	successStatus   int
-	tokenPath       string
-	formTokenHeader string
-	formTokenPrefix string
-	sessionTTL      string
+	loginURL          string
+	loginMethod       string
+	loginFormat       string
+	loginBodyTemplate string
+	usernameField     string
+	passwordField     string
+	extraFields       []string
+	successStatus     int
+	tokenPath         string
+	formTokenHeader   string
+	formTokenPrefix   string
+	sessionTTL        string
 }
 
 // buildSecretsForAdd produces the stored Secrets for a `profile add` call,
@@ -84,6 +85,7 @@ func buildSecretsForAdd(o *addOpts) (credential.Secrets, error) {
 	s.LoginURL = o.loginURL
 	s.LoginMethod = o.loginMethod
 	s.LoginFormat = o.loginFormat
+	s.LoginBodyTemplate = o.loginBodyTemplate
 	s.UsernameField = o.usernameField
 	s.PasswordField = o.passwordField
 	s.SuccessStatus = o.successStatus
@@ -183,6 +185,7 @@ func bindAddFlags(cmd *cobra.Command, o *addOpts) {
 	f.StringVar(&o.loginURL, "login-url", "", "Form-login URL (for --type form)")
 	f.StringVar(&o.loginMethod, "login-method", "", "HTTP method for login (default POST)")
 	f.StringVar(&o.loginFormat, "login-format", "", "'form' (default) or 'json' body for login")
+	f.StringVar(&o.loginBodyTemplate, "login-body-template", "", "Override body with a JSON template; {{username}}/{{password}}/{{<extra>}} are JSON-escaped-substituted. Content-Type is forced application/json.")
 	f.StringVar(&o.usernameField, "username-field", "", "Form field for username (default 'username')")
 	f.StringVar(&o.passwordField, "password-field", "", "Form field for password (default 'password')")
 	f.StringArrayVar(&o.extraFields, "extra-field", nil, "Extra non-secret form field 'k=v' (repeatable)")

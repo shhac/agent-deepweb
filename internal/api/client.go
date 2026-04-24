@@ -214,7 +214,7 @@ func buildRedirectPolicy(auth *credential.Resolved, follow bool) func(*http.Requ
 		if !auth.MatchesURL(req.URL) {
 			return agenterrors.Newf(agenterrors.FixableByHuman,
 				"refusing redirect to %s — outside allowlist for %q", req.URL.Host, auth.Name).
-				WithHint("The upstream is trying to send us to a host the credential wasn't registered for. If this is legitimate, ask the user to widen --domain.")
+				WithHint("Ask the user to run 'agent-deepweb profile allow " + auth.Name + " " + req.URL.Host + " " + credential.PrimarySecretFlagHint(auth.Type) + "'.")
 		}
 		return nil
 	}

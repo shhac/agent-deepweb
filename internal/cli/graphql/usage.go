@@ -28,4 +28,11 @@ EXAMPLES
 
   agent-deepweb graphql https://api.example.com/graphql --profile myapi \
     --query @./query.graphql --variables '{"id":"123"}'
+
+  # Introspection — often the right first move against an unfamiliar API.
+  agent-deepweb graphql https://api.example.com/graphql --profile myapi \
+    --query '{ __schema { queryType { fields { name } } } }'
+  # Then drill into a specific type:
+  agent-deepweb graphql https://api.example.com/graphql --profile myapi \
+    --query '{ __type(name: "User") { fields { name type { name kind } } } }'
 `

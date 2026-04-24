@@ -1,6 +1,7 @@
 package login
 
 import (
+	stdjson "encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -124,3 +125,137 @@ func TestBuildLoginBody(t *testing.T) {
 		t.Error("expected error for unknown login_format")
 	}
 }
+
+// TestBuildLoginBody_Template covers the --login-body-template path: the
+// template is substituted with JSON-escaped values, the result is valid
+// JSON (even for values containing quotes/backslashes), Content-Type is
+// application/json regardless of --login-format, and malformed templates
+// fail fast.
+func TestBuildLoginBody_Template(t *testing.T) {
+	t.Run("graphql-mutation shape round-trips", func(t *testing.T) {
+		s := credential.Secrets{
+			Username: "alice",
+			Password: "hunter2",
+			LoginBodyTemplate: `{"query":"mutation($u:String!,$p:String!){ signIn(input:{username:$u,password:$p}){ tokens { bearer }}}",` +
+				`"variables":{"u":"{{username}}","p":"{{password}}"}}`,
+		}
+		body, ct, err := buildLoginBody(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ct != "application/json" {
+			t.Errorf("content-type: %q", ct)
+		}
+		// Validates as JSON and contains substituted values.
+		if !strings.Contains(string(body), `"u":"alice"`) || !strings.Contains(string(body), `"p":"hunter2"`) {
+			t.Errorf("substitution missed: %s", body)
+		}
+	})
+
+	t.Run("values with quotes/backslashes stay valid JSON", func(t *testing.T) {
+		s := credential.Secrets{
+			Username:          `ali"ce`,
+			Password:          `path\to\secret`,
+			LoginBodyTemplate: `{"u":"{{username}}","p":"{{password}}"}`,
+		}
+		body, _, err := buildLoginBody(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Must parse cleanly — if we didn't JSON-escape, this would break.
+		var parsed map[string]string
+		if err := jsonUnmarshal(body, &parsed); err != nil {
+			t.Fatalf("not valid JSON: %v\n%s", err, body)
+		}
+		if parsed["u"] != `ali"ce` || parsed["p"] != `path\to\secret` {
+			t.Errorf("escape round-trip failed: %+v", parsed)
+		}
+	})
+
+	t.Run("extra-field placeholders substitute", func(t *testing.T) {
+		s := credential.Secrets{
+			Username:          "u",
+			Password:          "p",
+			ExtraFields:       map[string]string{"scope": "read:all", "client_id": "abc"},
+			LoginBodyTemplate: `{"u":"{{username}}","scope":"{{scope}}","cid":"{{client_id}}"}`,
+		}
+		body, _, err := buildLoginBody(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), `"scope":"read:all"`) || !strings.Contains(string(body), `"cid":"abc"`) {
+			t.Errorf("extra-fields not substituted: %s", body)
+		}
+	})
+
+	t.Run("unknown placeholder fails loudly with fixable_by:human", func(t *testing.T) {
+		s := credential.Secrets{
+			Username:          "u",
+			Password:          "p",
+			LoginBodyTemplate: `{"u":"{{username}}","unknown":"{{nope}}"}`,
+		}
+		_, _, err := buildLoginBody(s)
+		if err == nil {
+			t.Fatal("expected error for unknown placeholder (typo = loud fail, not silent empty)")
+		}
+		if !strings.Contains(err.Error(), "nope") {
+			t.Errorf("error should name the missing placeholder, got %v", err)
+		}
+	})
+
+	t.Run("template that isn't valid JSON after substitution errors with fixable_by:human", func(t *testing.T) {
+		s := credential.Secrets{
+			Username:          "u",
+			Password:          "p",
+			LoginBodyTemplate: `{"u":{{username}}}`, // placeholder outside quotes → bare token, breaks JSON
+		}
+		_, _, err := buildLoginBody(s)
+		if err == nil {
+			t.Fatal("expected error for template that yields invalid JSON")
+		}
+		if !strings.Contains(err.Error(), "invalid JSON") {
+			t.Errorf("error should mention invalid JSON, got %v", err)
+		}
+	})
+
+	t.Run("template overrides --login-format", func(t *testing.T) {
+		// If someone sets both login-format=form AND login-body-template,
+		// the template wins and content-type is application/json.
+		s := credential.Secrets{
+			Username:          "u",
+			Password:          "p",
+			LoginFormat:       "form",
+			LoginBodyTemplate: `{"u":"{{username}}"}`,
+		}
+		_, ct, err := buildLoginBody(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ct != "application/json" {
+			t.Errorf("template must force application/json, got %q", ct)
+		}
+	})
+}
+
+// jsonUnmarshal wraps encoding/json under a local alias so the template
+// test stays focused on the surface behaviour (body parses, values
+// round-trip) without importing encoding/json into multiple tests.
+func jsonUnmarshal(data []byte, v any) error {
+	return stdjson.Unmarshal(data, v)
+}
+
+func TestJSONStringEscape(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`alice`, `alice`},
+		{`a"b`, `a\"b`},
+		{`a\b`, `a\\b`},
+		{"a\nb", `a\nb`},
+		{``, ``},
+	}
+	for _, tc := range cases {
+		if got := jsonStringEscape(tc.in); got != tc.want {
+			t.Errorf("jsonStringEscape(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+

@@ -15,6 +15,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
+	"github.com/shhac/agent-deepweb/internal/template"
 )
 
 // doLogin is the top-level form-login orchestrator.
@@ -137,7 +138,18 @@ func validateLoginURL(resolved *credential.Resolved) (*url.URL, error) {
 
 // buildLoginBody serialises the login payload. Returns the bytes and the
 // Content-Type. Pure given the Secrets struct — testable in isolation.
+//
+// When s.LoginBodyTemplate is set, it takes precedence over the default
+// form/JSON construction: the template is substituted with JSON-escaped
+// {{username}}/{{password}}/{{<extra>}} values and the result is used
+// verbatim as a JSON body. This is how to support odd login shapes like
+// GraphQL-mutation logins or OAuth password-grant bodies that don't fit
+// the flat form/JSON default.
 func buildLoginBody(s credential.Secrets) (body []byte, contentType string, err error) {
+	if s.LoginBodyTemplate != "" {
+		return buildTemplatedLoginBody(s)
+	}
+
 	format := s.LoginFormat
 	if format == "" {
 		format = "form"
@@ -172,6 +184,48 @@ func buildLoginBody(s credential.Secrets) (body []byte, contentType string, err 
 			"unknown login-format %q", format).
 			WithHint("Must be 'form' or 'json'")
 	}
+}
+
+// buildTemplatedLoginBody substitutes {{username}}/{{password}} (plus any
+// extra-field names) into s.LoginBodyTemplate and returns the result as
+// a JSON body. Substituted values are JSON-string-escaped so a username
+// containing a quote or backslash doesn't break the resulting JSON; place
+// placeholders INSIDE JSON string quotes in the template (e.g.
+// `"username":"{{username}}"`) and the output is always valid JSON. The
+// output is also validated for JSON correctness before returning so a
+// malformed template fails fast at login time rather than mid-request.
+func buildTemplatedLoginBody(s credential.Secrets) ([]byte, string, error) {
+	params := map[string]any{
+		"username": jsonStringEscape(s.Username),
+		"password": jsonStringEscape(s.Password),
+	}
+	for k, v := range s.ExtraFields {
+		params[k] = jsonStringEscape(v)
+	}
+	rendered, err := template.SubstituteString(s.LoginBodyTemplate, params, false)
+	if err != nil {
+		return nil, "", agenterrors.Wrap(err, agenterrors.FixableByHuman).
+			WithHint("Check --login-body-template: placeholder names must match --username/--password/--extra-field keys")
+	}
+	var check any
+	if err := json.Unmarshal([]byte(rendered), &check); err != nil {
+		return nil, "", agenterrors.Newf(agenterrors.FixableByHuman,
+			"--login-body-template produced invalid JSON after substitution: %s", err.Error()).
+			WithHint("Ensure every {{placeholder}} is inside a JSON string literal and the overall template is valid JSON")
+	}
+	return []byte(rendered), "application/json", nil
+}
+
+// jsonStringEscape returns s escaped as the contents of a JSON string
+// (without surrounding quotes). Used before template substitution so the
+// substituted form stays valid JSON even when the credential value has
+// embedded quotes, backslashes, or control characters.
+func jsonStringEscape(s string) string {
+	b, _ := json.Marshal(s)
+	if len(b) < 2 {
+		return s
+	}
+	return string(b[1 : len(b)-1])
 }
 
 // performLoginRequest issues the login POST. The caller owns closing the
