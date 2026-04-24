@@ -59,13 +59,9 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Print the full tracked record for an audit ID (only exists when --track was used)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rec, err := track.Read(args[0])
+			rec, err := readTrackedRecord(args[0])
 			if err != nil {
-				if os.IsNotExist(err) {
-					return shared.Fail(agenterrors.Newf(agenterrors.FixableByHuman,
-						"no tracked record for %q (pruned after TTL, or --track was not set on the original request)", args[0]))
-				}
-				return shared.FailHuman(err)
+				return shared.Fail(err)
 			}
 			output.PrintJSON(rec)
 			return nil
@@ -103,6 +99,22 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	cmd.AddCommand(pruneCmd)
 
 	root.AddCommand(cmd)
+}
+
+// readTrackedRecord fetches a tracked record by ID and classifies the
+// common "doesn't exist" path as fixable_by: human (the original
+// request wasn't --track'd, or the record has been pruned). Other I/O
+// errors pass through for shared.FailHuman to wrap.
+func readTrackedRecord(id string) (*track.Record, error) {
+	rec, err := track.Read(id)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, agenterrors.Newf(agenterrors.FixableByHuman,
+				"no tracked record for %q (pruned after TTL, or --track was not set on the original request)", id)
+		}
+		return nil, agenterrors.Wrap(err, agenterrors.FixableByHuman)
+	}
+	return rec, nil
 }
 
 // runTrackPrune dispatches to the right track-package pruner based on
