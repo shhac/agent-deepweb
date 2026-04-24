@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/shhac/agent-deepweb/internal/config"
 )
@@ -113,8 +112,8 @@ func Store(c Credential, s Secrets) (storage string, err error) {
 	}
 	entry := entryFromCredential(c)
 
-	if runtime.GOOS == "darwin" {
-		if err := keychainStore(c.Name, s); err == nil {
+	if DefaultBackend.Available() {
+		if err := DefaultBackend.Store(c.Name, s); err == nil {
 			entry.KeychainManaged = true
 			idx[c.Name] = entry
 			if err := writeIndex(idx); err != nil {
@@ -160,7 +159,7 @@ func Remove(name string) error {
 		return &NotFoundError{Name: name}
 	}
 	if e.KeychainManaged {
-		keychainDelete(name)
+		DefaultBackend.Delete(name)
 	} else {
 		if sec, err := readSecretsFile(); err == nil {
 			delete(sec, name)
@@ -182,7 +181,7 @@ func loadStoredSecrets(name string, idx map[string]indexEntry) (Secrets, error) 
 		return Secrets{}, &NotFoundError{Name: name}
 	}
 	if e.KeychainManaged {
-		return keychainGet(name)
+		return DefaultBackend.Get(name)
 	}
 	sec, err := readSecretsFile()
 	if err != nil {

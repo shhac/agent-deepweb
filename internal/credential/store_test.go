@@ -105,7 +105,7 @@ func TestStore_And_Remove(t *testing.T) {
 
 	// Clean up keychain entry on darwin to avoid test pollution.
 	if runtime.GOOS == "darwin" {
-		keychainDelete("test-store-remove")
+		DefaultBackend.Delete("test-store-remove")
 	}
 }
 

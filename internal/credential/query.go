@@ -46,7 +46,7 @@ func Resolve(name string) (*Resolved, error) {
 
 	var secrets Secrets
 	if e.KeychainManaged {
-		s, err := keychainGet(name)
+		s, err := DefaultBackend.Get(name)
 		if err != nil {
 			return nil, fmt.Errorf("read keychain for %q: %w", name, err)
 		}
