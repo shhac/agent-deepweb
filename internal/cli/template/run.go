@@ -134,7 +134,7 @@ func parseAndValidateParams(tpl *template.Template, rawParams []string) (map[str
 	typed, err := tpl.Validate(kv)
 	if err != nil {
 		return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent).
-			WithHint("Run 'agent-deepweb tpl show " + tpl.Name + "' to see the parameter schema")
+			WithHint("Run 'agent-deepweb template show " + tpl.Name + "' to see the parameter schema")
 	}
 	return typed, nil
 }

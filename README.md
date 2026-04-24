@@ -171,7 +171,7 @@ agent-deepweb template remove <name>
 agent-deepweb profile list
 agent-deepweb profile show <name>
 agent-deepweb profile test <name>
-agent-deepweb profile add <name> --type <t> [--passphrase <p>] ...
+agent-deepweb profile add <name> --type <t> --domain <host> [--passphrase <p>] ...
 agent-deepweb profile remove <name>              Clears jar too
 agent-deepweb profile allow <name> <domain>      --passphrase <p>
 agent-deepweb profile disallow <name> <domain>

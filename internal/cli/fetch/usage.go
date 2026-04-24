@@ -34,14 +34,27 @@ FLAGS
                                  --profile none for novel LLM-authored flows.
   --method GET|POST|...          HTTP method (default: GET, or POST if body given)
   --header 'K: V'                Extra request header (repeatable; no secrets)
+  -H 'K: V'                      Short form for --header
   --query key=value              URL query parameter (repeatable)
   --data <string|@file|@->       Raw request body
   --json <string|@file|@->       JSON body; sets Content-Type: application/json
-  --form key=value               Form body field (repeatable); sets x-www-form-urlencoded
+  --form key=value               Form body field (repeatable); x-www-form-urlencoded
+                                 OR, combined with --file, a text part in multipart
+  --file field=@path[;type=MIME][;filename=NAME]
+                                 Multipart file part (repeatable); sets
+                                 multipart/form-data. Mix with --form for text parts.
   --timeout <ms>                 Per-request timeout
   --max-size <bytes>             Cap response body size (default 10 MiB)
   --follow-redirects             Follow redirects (default: true)
   --format json|jsonl|raw|text   Output format (default json)
+  --user-agent <s>               Per-request UA; beats profile UA and config default
+  -A <s>                         Short form for --user-agent
+  --track                        Persist a full redacted request/response record;
+                                 envelope gains audit_id. Retrieve later with
+                                 'agent-deepweb audit show <id>'.
+  --hide-request                 Drop the 'request' block from the envelope
+  --hide-response                Drop response headers/body; keep status + profile
+                                 + audit_id (useful for "did it work?" calls)
 
 EXAMPLES
   # GET with auto-resolved profile

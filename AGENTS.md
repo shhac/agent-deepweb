@@ -38,55 +38,69 @@ cmd/
   mockdeep/main.go                  Demo server used by e2e tests
 internal/
   api/                              HTTP transport layer
-    client.go                       Request/Response/ClientOptions + Do() orchestrator + audit defer
+    types.go                        Request, Response, SentRequest, ClientOptions
+    client.go                       Do orchestrator + bufferRequestBody / redactResponse / buildSentRequest / buildRedirectPolicy / readCappedBody
+    record.go                       buildAuditEntry, buildTrackRecord, writeTrackRecord (pure)
+    jar.go                          primeCookieJar / harvestJarCookies + loadOrInitJar / diffNewCookies
     request.go                      buildHTTPRequest, resolveUserAgent, viewPersisted
     scheme.go                       enforceScheme, isLoopback
     classify.go                     classifyTransport, classifyHTTP → fixable_by
     auth.go                         ApplyAuth per credential type
     redact.go                       Header / JSON body / literal-byte echo redactors
   audit/log.go                      Append-only JSONL request log (profile + jar fields)
+  track/track.go                    Opt-in full-fidelity request/response records (AES-at-rest n/a; files are mode 0600)
   cli/                              Cobra command tree
     root.go                         Global flags + subcommand registration
     usage.go                        Top-level llm-help card
     shared/                         Helpers used by every subcommand
       shared.go                     GlobalFlags, ResolveProfile (URL allowlist + ambiguity, ProfileNone sentinel)
-      helpers.go                    Fail*, PrintOK, First*, SplitHeader, SplitKV, ResolveLimits
-      secret_assert.go              SecretAssert + escalateOverwrite — the v2 escalation gate
-    fetch/                          `fetch` — curl-with-auth (--profile / --cookiejar)
+      helpers.go                    Fail*, PrintOK, LoadProfileMetadata/Resolved, LoadInlineSpec, ResolveLimits, First*, Split*
+      secret_assert.go              PassphraseAssert + LoadAndAssert + ApplyPassphraseAssert (the v0.3+ escalation gate)
+    fetch/                          `fetch` — curl-with-auth (--profile / --cookiejar / --file / --track / --hide-*)
     graphql/                        `graphql` — POST + error classification
     profile/                        `profile {list,show,test,add,remove,allow,…}` — split per file
       profile.go                    Register + list + show
       test.go / add.go / remove.go  One file per subcommand
       domains.go                    allow/disallow/allow-path/disallow-path
       config.go                     set-health/set-default-header/set-allow-http/set-user-agent
+      set_secret.go                 Rotate primary secret, preserving everything else
+      set_passphrase.go             Rotate only the passphrase
+      mark_header.go                mark-header-sensitive / mark-header-visible
     login/                          `login` + `jar …`
       login.go                      Register wiring
       jar.go                        jar status / show / clear / set-expires / mark-*
       form.go                       doLogin + helpers (the form-login engine)
-    tpl/                            `template {list,show,run,import,remove}`
-    audit/                          `audit tail / summary`
-  config/config.go                  App config I/O + DefaultTimeoutMS / DefaultMaxBytes constants
+      form_token.go                 extractJSONToken, computeExpiry, readCapped
+    template/                       `template {list,show,run,import,remove}` (renamed from tpl)
+    audit/                          `audit tail / summary / show / prune`
+    config/                         `config list-keys / get / set / unset`
+  config/                           Persistent user config (not profile state)
+    config.go                       Config types + Read/Write + ConfigDir
+    keys.go                         Keys table (per-key get/set/unset closures)
   credential/                       Profile storage (legacy package name; see note below)
-    credential.go                   Types (Credential, Secrets — incl. JarKey + Passphrase, Resolved, indexEntry)
+    credential.go                   Types (Credential, Secrets — incl. JarKey + Passphrase, Resolved, indexEntry) + PrimarySecretFlagHint
+    secrets_input.go                SecretInputs + BuildSecretsCore (shared by add and set-secret)
     passphrase.go                   DefaultPassphrase / ValidatePassphrase / VerifyPassphrase (constant-time)
     store.go                        Store/Remove + index+secrets file I/O (provisions JarKey + Passphrase)
-    query.go                        List / GetMetadata / Resolve
-    mutate.go                       Set*(name, …) setters
+    query.go                        List / GetMetadata / Resolve / FindByURL
+    mutate.go                       Set*(name, …) setters (incl. SetSensitiveHeaders / SetVisibleHeaders)
     match.go                        MatchesURL — host[:port] + path allowlist
     cookie.go                       PersistedCookie + sensitivity classification
-    jar.go                          Jar (cookies + token + expiry); AES-256-GCM read/write
-                                    at profiles/<name>/jar.json + plain BYO helpers
+    jar.go                          Jar struct + CookieView + JarStatus/JarShow
+    jar_io.go                       ReadJar/WriteJar/ClearJar (encrypted default) + ReadJarPlain/WriteJarPlain (BYO)
+    jar_crypto.go                   AES-256-GCM seal/open + magic prefix + key gen
+    jar_harvest.go                  HarvestResponse / HarvestFromCookieJar / MarkCookieSensitivity
     keychain.go                     macOS Keychain adapter
     notfound.go                     WrapNotFound / ClassifyLookupErr
   errors/errors.go                  APIError{Message, Hint, FixableBy, Cause}
-  mockdeep/server.go                Mock HTTP server (one handler per auth mode)
+  mockdeep/server.go                Mock HTTP server (split: auth_handlers.go, util_handlers.go)
   output/                           LLM-facing output
     output.go                       PrintJSON, WriteError, format parsing
-    envelope.go                     BuildHTTPEnvelope, RenderBody
+    envelope.go                     BuildHTTPEnvelope + RenderResponse + RenderBody (handles HideRequest/HideResponse + AuditID)
   template/                         Request templates (highest-safety mode)
     template.go                     Template / ParamSpec types + Store/Get/List/Remove/Import
-    validate.go                     Type coercion, Required/Default/Enum
-    substitute.go                   {{param}} rendering
+    validate.go                     Type coercion, Required/Default/Enum + DeclaredPlaceholders + Lint
+    substitute.go                   {{param}} rendering, substituteStringValue
     notfound.go                     WrapNotFound / ClassifyLookupErr
 design-docs/v1-design.md            v1 (mode-gated) rationale
 design-docs/v2-profiles.md          v2 (profiles + password-protect + jars) rationale and decisions
@@ -103,7 +117,8 @@ skills/agent-deepweb/SKILL.md       Claude Code skill definition + permission al
 |------|-------|
 | `fetch` | curl-with-auth. `--profile <name>` or `--profile none`. Optional `--cookiejar <path>` for BYO. |
 | `graphql` | POST with classified GraphQL error envelope. Same `--profile` / `--cookiejar`. |
-| `tpl` | Parameterised request templates. `template run` is the LLM-facing verb. |
+| `template` | Parameterised request templates. `template run` is the LLM-facing verb. |
+| `config` | Persistent user config (list-keys / get / set / unset). |
 | `profile` | CRUD for profiles. Escalation commands require primary secret re-assertion. `remove` clears the jar too. |
 | `login` / `jar` | Form-login flow + per-profile jar inspection. |
 | `audit` | Inspect the append-only request log. |
@@ -130,8 +145,9 @@ The harness (Claude Code) decides which of these the LLM can run. SKILL.md ships
 - **Keychain on macOS** (service `app.paulie.agent-deepweb`); 0600 file fallback elsewhere. Jars on disk at `profiles/<name>/jar.json` (encrypted) or any caller-chosen `--cookiejar` path (plaintext).
 - **Fixable-by hints everywhere.** Every error is `{error, hint, fixable_by}` with `agent | human | retry`.
 - **Request templates.** Fixed method, URL with `{{param}}` placeholders, optional query/headers/body_template, profile binding, typed parameter schema. LLM runs `template run <name> --param k=v`; values are coerced and validated *before* any HTTP request. Body substitution is type-preserving (an `int` param becomes a JSON number, not a string).
-- **Audit log.** Every fetch/graphql/tpl-run writes one JSONL entry to `~/.config/agent-deepweb/audit.log` with method, host, path, profile name, BYO jar path, template name, status, bytes, duration, and `outcome`+`fixable_by` on errors. Tripwires: `AnonymousCount` (every `--profile none`), `ByJarPath` (every BYO jar). Never includes bodies, headers, or query strings. Opt out via `AGENT_DEEPWEB_AUDIT=off`.
-- **User-Agent precedence.** per-request `--user-agent` > profile's UA > `User-Agent` request header > `AGENT_DEEPWEB_USER_AGENT` env > `agent-deepweb/<version>` (curl-style).
+- **Audit log.** Every fetch/graphql/template-run writes one JSONL entry to `~/.config/agent-deepweb/audit.log` with method, host, path, profile name, BYO jar path, template name, status, bytes, duration, and `outcome`+`fixable_by` on errors. Tripwires: `AnonymousCount` (every `--profile none`), `ByJarPath` (every BYO jar). Never includes bodies, headers, or query strings. Opt out via `agent-deepweb config set audit.enabled false`.
+- **Tracked records.** `fetch/graphql/template run --track` additionally persists a full redacted request+response to `profiles/track/<id>.json`, retrievable via `audit show <id>`. Each record stamps its own `ExpiresAt` at write time (= ts + current `track.ttl`), so changing the config TTL later affects only new records. Lazy-pruned on every write; explicit `audit prune [--older-than <dur>]` also supported.
+- **User-Agent precedence.** per-request `--user-agent` > profile's UA > `User-Agent` request header > config `default.user-agent` > `agent-deepweb/<version>` (curl-style).
 - **Single binary, pure Go.** `CGO_ENABLED=0`; deps: cobra, `golang.org/x/net/publicsuffix`.
 
 ---
@@ -172,13 +188,15 @@ For unit-style integration tests, use `httptest.NewServer(mockdeep.New())` rathe
    - `shared.Fail(err)` to emit a classified error to stderr and return it. Never `output.WriteError(...) ; return err` by hand.
    - `shared.FailHuman(err)` / `shared.FailAgent(err)` for the common wrap-and-fail one-liners.
    - `shared.PrintOK(map[string]any{...})` for the canonical `{"status":"ok",…}` success envelope.
-   - `credential.ClassifyLookupErr(err, name)` / `template.ClassifyLookupErr(err, name)` for the not-found classification.
+   - `shared.LoadProfileMetadata(name)` / `shared.LoadProfileResolved(name)` for profile lookup with classified not-found errors.
+   - `credential.ClassifyLookupErr(err, name)` / `template.ClassifyLookupErr(err, name)` when you need the bare classifier.
    - `shared.ResolveLimits(flagTimeout, flagMaxBytes, globals)` for request time/size caps.
    - `shared.SplitHeader(s)` / `shared.SplitKV(s, flagLabel)` for header and `key=value` parsing.
+   - `shared.LoadInlineSpec(s)` for `@file` / `@-` / literal body handling.
 4. **If the subcommand is an escalation** (widens scope, reveals stored secret, rotates the primary, changes outbound auth shape):
    - Bind `--passphrase` via `shared.BindPassphraseAssertFlags(cmd, &assert)`
-   - Call `shared.ApplyPassphraseAssert(name, &assert)` before the mutation
-   - Document why in the function comment
+   - Use `c, err := shared.LoadAndAssert(name, &assert)` as the preferred preamble — it's `LoadProfileMetadata` + `ApplyPassphraseAssert` in one call with classified errors
+   - Document why the command is escalation-gated in the function comment
 5. Register the command in the package's `Register()` function, called from `internal/cli/root.go`.
 6. Add a test — pure unit if possible, else integration via mockdeep.
 

@@ -137,7 +137,7 @@ USAGE
   agent-deepweb audit prune [--older-than <duration>]
 
 SUMMARY
-  Every fetch / graphql / tpl run request is logged to
+  Every fetch / graphql / template run request is logged to
   ~/.config/agent-deepweb/audit.log (JSONL) with method, host, path,
   profile, status, bytes, duration, and (for errors) fixable_by. The
   audit log does NOT include bodies, headers, secret values, or query

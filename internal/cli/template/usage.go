@@ -1,13 +1,13 @@
 package templatecli
 
-const usageText = `tpl — parameterised request templates
+const usageText = `template — parameterised request templates
 
 USAGE
-  agent-deepweb tpl list
-  agent-deepweb tpl show <name>
-  agent-deepweb tpl run <name> --param k=v [--param k=v ...]
-  agent-deepweb tpl import <file>        (human-only)
-  agent-deepweb tpl remove <name>        (human-only)
+  agent-deepweb template list
+  agent-deepweb template show <name>
+  agent-deepweb template run <name> --param k=v [--param k=v ...]
+  agent-deepweb template import <file>        (human-only)
+  agent-deepweb template remove <name>        (human-only)
 
 SUMMARY
   A template is a frozen request shape authored by the human. The LLM can
@@ -17,20 +17,20 @@ SUMMARY
 
 TEMPLATE FILE FORMAT
   {
-    "name": "github.get_user",
-    "description": "Fetch a user's public profile",
+    "name": "myapi.get_item",
+    "description": "Fetch an item by id",
     "method": "GET",
-    "url": "https://api.github.com/users/{{username}}",
-    "profile": "github",
+    "url": "https://api.example.com/items/{{id}}",
+    "profile": "myapi",
     "parameters": {
-      "username": { "type": "string", "required": true }
+      "id": { "type": "string", "required": true }
     }
   }
 
   Or multiple at once:
   {
-    "github.get_user": { ... },
-    "github.list_repos": { ... }
+    "myapi.get_item": { ... },
+    "myapi.list_items": { ... }
   }
 
 PARAMETER TYPES
@@ -49,8 +49,8 @@ BODY TEMPLATE (type-preserving substitution)
   }
 
 INVOCATION EXAMPLES
-  agent-deepweb tpl run github.get_user --param username=octocat
-  agent-deepweb tpl run myapi.create_widget \
+  agent-deepweb template run myapi.get_item --param id=abc123
+  agent-deepweb template run myapi.create_widget \
     --param name=blue-widget --param priority=5 --param labels=a,b,c
 
 OUTPUT

@@ -8,17 +8,24 @@
 //
 // File layout inside this package:
 //
-//	credential.go   Type definitions (Credential, Secrets, Resolved,
-//	                NotFoundError, indexEntry) + entryToCredential.
-//	store.go        Index/secrets file I/O + Store/Remove (provisions JarKey).
-//	query.go        List / GetMetadata / Resolve.
-//	mutate.go       Per-field setters (SetDomains, SetPaths, …).
-//	match.go        Host/port/path matching for URL allowlist.
-//	cookie.go       PersistedCookie + classification.
-//	jar.go          Per-profile encrypted Jar (cookies, optional token,
-//	                expiry) + AES-256-GCM read/write at profiles/<name>/jar.json.
-//	notfound.go     WrapNotFound helper for CLI callers.
-//	keychain.go     macOS Keychain adapter.
+//	credential.go     Type definitions (Credential, Secrets, Resolved,
+//	                  NotFoundError, indexEntry) + PrimarySecretFlagHint.
+//	secrets_input.go  SecretInputs + BuildSecretsCore (shared by CLI `add` and `set-secret`).
+//	passphrase.go     DefaultPassphrase / ValidatePassphrase / VerifyPassphrase
+//	                  (constant-time compare).
+//	store.go          Index/secrets file I/O + Store/Remove (provisions JarKey
+//	                  + Passphrase auto-default).
+//	query.go          List / GetMetadata / Resolve / FindByURL.
+//	mutate.go         Per-field setters (SetDomains, SetPaths, SetSensitiveHeaders, …).
+//	match.go          Host/port/path matching for URL allowlist.
+//	cookie.go         PersistedCookie + classification.
+//	jar.go            Jar struct + view types + summary helpers.
+//	jar_io.go         ReadJar/WriteJar/ClearJar (encrypted default)
+//	                  + ReadJarPlain/WriteJarPlain (BYO).
+//	jar_crypto.go     AES-256-GCM seal/open + magic prefix + key generation.
+//	jar_harvest.go    HarvestResponse / HarvestFromCookieJar / MarkCookieSensitivity.
+//	keychain.go       macOS Keychain adapter.
+//	notfound.go       WrapNotFound / ClassifyLookupErr.
 package credential
 
 import "fmt"
