@@ -52,6 +52,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
 
 	shared.LLMHelp(cmd, "graphql", usageText)
+	registerImportSchema(cmd)
 
 	root.AddCommand(cmd)
 }
