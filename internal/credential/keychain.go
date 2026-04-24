@@ -97,3 +97,10 @@ func (noopBackend) Available() bool                     { return false }
 func (noopBackend) Store(string, Secrets) error         { return fmt.Errorf("keychain not available") }
 func (noopBackend) Get(string) (Secrets, error)         { return Secrets{}, fmt.Errorf("keychain not available") }
 func (noopBackend) Delete(string)                       {}
+
+// NoopBackend returns an unusable SecretBackend that Store sees as
+// unavailable, forcing the file-fallback path. Tests that mutate
+// credentials on macOS should install this via SetBackend so they
+// don't touch the real system keychain (which is process-global and
+// a cross-package state-leak hazard).
+func NoopBackend() SecretBackend { return noopBackend{} }
