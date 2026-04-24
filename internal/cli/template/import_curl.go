@@ -34,7 +34,7 @@ Flags ignored (we always follow redirects; auth comes from --profile):
 					"--name is required (there's no filename to derive one from)",
 					agenterrors.FixableByHuman))
 			}
-			stored, err := template.ImportCurl(args[0], template.ImportCurlOptions{
+			stored, err := importers.ImportCurl(args[0], importers.ImportCurlOptions{
 				Name:    name,
 				Profile: profile,
 			})
