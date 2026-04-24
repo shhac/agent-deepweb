@@ -61,12 +61,32 @@ func ImportOpenAPI(data []byte, opts ImportOpenAPIOptions) ([]string, error) {
 		return nil, fmt.Errorf("spec appears to be YAML; convert to JSON first (e.g. `yq -o=json . spec.yaml > spec.json`)")
 	}
 
-	var doc openapiDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
+	// Peek at the version marker so we can dispatch between v2 (swagger)
+	// and v3 (openapi) without two copies of the unmarshal logic.
+	var probe struct {
+		Swagger string `json:"swagger"`
+		OpenAPI string `json:"openapi"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
 		return nil, fmt.Errorf("parse openapi spec: %w", err)
 	}
-	if !strings.HasPrefix(doc.OpenAPI, "3.") {
-		return nil, fmt.Errorf("unsupported openapi version %q (only v3.x is handled)", doc.OpenAPI)
+
+	var doc openapiDoc
+	switch {
+	case strings.HasPrefix(probe.OpenAPI, "3."):
+		if err := json.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("parse openapi spec: %w", err)
+		}
+	case strings.HasPrefix(probe.Swagger, "2."):
+		// Swagger 2.0: parse into the v2 shape and transform to v3 so the
+		// downstream operationToTemplate code path stays single-source.
+		var v2 swaggerV2Doc
+		if err := json.Unmarshal(data, &v2); err != nil {
+			return nil, fmt.Errorf("parse swagger 2.0 spec: %w", err)
+		}
+		doc = swaggerV2ToV3(v2)
+	default:
+		return nil, fmt.Errorf("unsupported spec version (openapi=%q swagger=%q); need openapi v3.x or swagger v2.x", probe.OpenAPI, probe.Swagger)
 	}
 
 	serverURL := strings.TrimRight(opts.ServerOverride, "/")

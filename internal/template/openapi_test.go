@@ -190,13 +190,81 @@ func TestImportOpenAPI_RejectsYAML(t *testing.T) {
 	}
 }
 
-// TestImportOpenAPI_RejectsV2 — Swagger 2.0 specs look tempting but
-// use a different request shape. Refuse clearly.
-func TestImportOpenAPI_RejectsV2(t *testing.T) {
-	v2 := `{"swagger":"2.0","paths":{}}`
-	_, err := ImportOpenAPI([]byte(v2), ImportOpenAPIOptions{Prefix: "x"})
-	if err == nil {
-		t.Fatal("expected v2 refusal")
+// TestImportOpenAPI_AcceptsSwaggerV2 — v2 specs route through the
+// v2-to-v3 transformer. Minimal smoke test that path+query+body params
+// all land in the right slots.
+func TestImportOpenAPI_AcceptsSwaggerV2(t *testing.T) {
+	dir := t.TempDir()
+	config.SetConfigDir(dir)
+	t.Cleanup(func() { config.SetConfigDir(""); config.ClearCache() })
+
+	v2 := `{
+      "swagger": "2.0",
+      "host": "api.example.com",
+      "basePath": "/v1",
+      "schemes": ["https"],
+      "paths": {
+        "/pets/{id}": {
+          "get": {
+            "operationId": "getPet",
+            "parameters": [
+              {"name":"id","in":"path","required":true,"type":"integer"},
+              {"name":"verbose","in":"query","type":"boolean"}
+            ]
+          }
+        },
+        "/pets": {
+          "post": {
+            "operationId": "createPet",
+            "consumes": ["application/json"],
+            "parameters": [
+              {"name":"body","in":"body","required":true,"schema":{"type":"object"}}
+            ]
+          }
+        }
+      }
+    }`
+	imported, err := ImportOpenAPI([]byte(v2), ImportOpenAPIOptions{Prefix: "v2api"})
+	if err != nil {
+		t.Fatalf("ImportOpenAPI(v2): %v", err)
+	}
+	if len(imported) != 2 {
+		t.Errorf("want 2 imports, got %v", imported)
+	}
+	got, err := Get("v2api.getpet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URL != "https://api.example.com/v1/pets/{{id}}" {
+		t.Errorf("URL not composed from host+basePath+path: %q", got.URL)
+	}
+	if got.Parameters["id"].Type != "int" || !got.Parameters["id"].Required {
+		t.Errorf("id param: %+v", got.Parameters["id"])
+	}
+	if got.Parameters["verbose"].Type != "bool" {
+		t.Errorf("verbose: %+v", got.Parameters["verbose"])
+	}
+	// createPet routes through requestBody → body object param.
+	create, err := Get("v2api.createpet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if create.BodyFormat != "json" {
+		t.Errorf("body_format: %q", create.BodyFormat)
+	}
+	body := create.Parameters["body"]
+	if body.Type != "object" || !body.Required {
+		t.Errorf("body param: %+v", body)
+	}
+}
+
+// TestImportOpenAPI_RejectsUnknownVersion — neither openapi 3.x nor
+// swagger 2.x → clear refusal.
+func TestImportOpenAPI_RejectsUnknownVersion(t *testing.T) {
+	doc := `{"swagger":"1.2","paths":{}}`
+	_, err := ImportOpenAPI([]byte(doc), ImportOpenAPIOptions{Prefix: "x"})
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Errorf("want unsupported-version error, got %v", err)
 	}
 }
 
