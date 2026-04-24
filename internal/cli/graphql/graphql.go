@@ -157,25 +157,8 @@ func buildGraphQLPayload(o *opts) ([]byte, error) {
 // without re-unmarshalling. hideRequest/hideResponse mirror the same
 // flags on fetch — token-saving opt-outs for the LLM.
 func buildGraphQLEnvelope(endpoint string, auth *credential.Resolved, resp *api.Response, hideRequest, hideResponse bool) (map[string]any, gqlResponse) {
-	envelope := map[string]any{
-		"endpoint": endpoint,
-		"status":   nil,
-		"profile":  nil,
-	}
-	if auth != nil {
-		envelope["profile"] = auth.Name
-	}
-	if resp != nil && resp.AuditID != "" {
-		envelope["audit_id"] = resp.AuditID
-	}
-	if !hideRequest && resp != nil && resp.Sent.Method != "" {
-		envelope["request"] = map[string]any{
-			"method":     resp.Sent.Method,
-			"url":        resp.Sent.URL,
-			"headers":    resp.Sent.Headers,
-			"body_bytes": resp.Sent.BodyBytes,
-		}
-	}
+	envelope := output.BuildBaseEnvelope(baseIn(auth, resp, hideRequest))
+	envelope["endpoint"] = endpoint
 	if !hideResponse {
 		envelope["truncated"] = false
 		envelope["data"] = nil
@@ -183,9 +166,9 @@ func buildGraphQLEnvelope(endpoint string, auth *credential.Resolved, resp *api.
 	}
 	var parsed gqlResponse
 	if resp == nil {
+		envelope["status"] = nil
 		return envelope, parsed
 	}
-	envelope["status"] = resp.Status
 	_ = json.Unmarshal(resp.Body, &parsed)
 	if !hideResponse {
 		envelope["truncated"] = resp.Truncated
@@ -199,6 +182,26 @@ func buildGraphQLEnvelope(endpoint string, auth *credential.Resolved, resp *api.
 		}
 	}
 	return envelope, parsed
+}
+
+// baseIn builds a BaseEnvelopeIn from an api.Response. Duplicated at
+// this package level (vs. pulling a helper into internal/output)
+// because resp.Sent is an api-package type; having each verb own its
+// own adapter keeps the output package dependency-free of api.
+func baseIn(auth *credential.Resolved, resp *api.Response, hideRequest bool) output.BaseEnvelopeIn {
+	in := output.BaseEnvelopeIn{
+		Auth:        auth,
+		HideRequest: hideRequest,
+	}
+	if resp != nil {
+		in.Status = resp.Status
+		in.AuditID = resp.AuditID
+		in.RequestMethod = resp.Sent.Method
+		in.RequestURL = resp.Sent.URL
+		in.RequestHeaders = resp.Sent.Headers
+		in.RequestBodyBytes = resp.Sent.BodyBytes
+	}
+	return in
 }
 
 func classifyGraphQL(message string, extensions map[string]any) *agenterrors.APIError {

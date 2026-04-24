@@ -41,6 +41,53 @@ type EnvelopeIn struct {
 	HideResponse bool
 }
 
+// BaseEnvelopeIn is the minimal set of fields every verb's response
+// envelope carries: the status code, the resolved profile, an optional
+// audit_id (populated when --track was set), and a snapshot of the
+// request that went out. The URL / endpoint key is NOT included here
+// because the key name varies by verb ("url" for fetch, "endpoint"
+// for graphql + jsonrpc); callers insert that one field themselves.
+type BaseEnvelopeIn struct {
+	Auth             *credential.Resolved
+	Status           int
+	AuditID          string
+	RequestMethod    string
+	RequestURL       string
+	RequestHeaders   http.Header
+	RequestBodyBytes int
+	HideRequest      bool
+}
+
+// BuildBaseEnvelope returns an envelope carrying the fields shared by
+// every verb: status, profile, optional audit_id, and (unless
+// HideRequest) a redacted snapshot of the request. Verbs layer their
+// own response-shaped fields on top.
+//
+// Invariant: the returned map is freshly-allocated — callers can add
+// and mutate without risking aliasing with a future call.
+func BuildBaseEnvelope(in BaseEnvelopeIn) map[string]any {
+	env := map[string]any{
+		"status": in.Status,
+	}
+	if in.Auth != nil {
+		env["profile"] = in.Auth.Name
+	} else {
+		env["profile"] = nil
+	}
+	if in.AuditID != "" {
+		env["audit_id"] = in.AuditID
+	}
+	if !in.HideRequest && in.RequestMethod != "" {
+		env["request"] = map[string]any{
+			"method":     in.RequestMethod,
+			"url":        in.RequestURL,
+			"headers":    in.RequestHeaders,
+			"body_bytes": in.RequestBodyBytes,
+		}
+	}
+	return env
+}
+
 // BuildHTTPEnvelope returns the LLM-facing map for fetch/tpl responses.
 // Shape is stable — documented in fetch/usage.go.
 //
@@ -55,32 +102,23 @@ type EnvelopeIn struct {
 // response-shaped except status/url/profile/audit_id (save tokens when
 // the LLM only cares about "did it work").
 func BuildHTTPEnvelope(in EnvelopeIn) map[string]any {
-	env := map[string]any{
-		"url":    in.URL,
-		"status": in.Status,
-	}
-	if in.Auth != nil {
-		env["profile"] = in.Auth.Name
-	} else {
-		env["profile"] = nil
-	}
-	if in.AuditID != "" {
-		env["audit_id"] = in.AuditID
-	}
+	env := BuildBaseEnvelope(BaseEnvelopeIn{
+		Auth:             in.Auth,
+		Status:           in.Status,
+		AuditID:          in.AuditID,
+		RequestMethod:    in.RequestMethod,
+		RequestURL:       in.RequestURL,
+		RequestHeaders:   in.RequestHeaders,
+		RequestBodyBytes: in.RequestBodyBytes,
+		HideRequest:      in.HideRequest,
+	})
+	env["url"] = in.URL
 	if !in.HideResponse {
 		env["status_text"] = in.StatusText
 		env["headers"] = in.Headers
 		env["content_type"] = in.ContentType
 		env["truncated"] = in.Truncated
 		env["body"] = RenderBody(in.ContentType, in.Body)
-	}
-	if !in.HideRequest && in.RequestMethod != "" {
-		env["request"] = map[string]any{
-			"method":     in.RequestMethod,
-			"url":        in.RequestURL,
-			"headers":    in.RequestHeaders,
-			"body_bytes": in.RequestBodyBytes,
-		}
 	}
 	return env
 }
