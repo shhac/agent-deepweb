@@ -32,6 +32,10 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	registerRun(cmd)
 	registerImport(cmd)
 	registerImportOpenAPI(cmd)
+	registerImportPostman(cmd)
+	registerImportHAR(cmd)
+	registerImportHTTP(cmd)
+	registerImportCurl(cmd)
 	registerRemove(cmd)
 
 	root.AddCommand(cmd)

@@ -8,6 +8,10 @@ USAGE
   agent-deepweb template run <name> --param k=v [--param k=v ...]
   agent-deepweb template import <file>                  (human-only)
   agent-deepweb template import-openapi <spec-json>     (human-only)
+  agent-deepweb template import-postman <collection>    (human-only)
+  agent-deepweb template import-har <capture>           (human-only)
+  agent-deepweb template import-http <file.http>        (human-only)
+  agent-deepweb template import-curl '<curl-cmd>'       (human-only)
   agent-deepweb template remove <name>                  (human-only)
 
 SUMMARY
@@ -59,24 +63,41 @@ OUTPUT
   "url" so the caller can see exactly what was sent. Errors keep the
   fixable_by classification.
 
-OPENAPI IMPORT
-  Translate an OpenAPI v3 JSON spec into one template per operation:
-    agent-deepweb template import-openapi ./spec.json \
-      --prefix myapi --profile myapi
+IMPORT SOURCES
+  All importers share --prefix (required, namespaces names) and
+  --profile (optional, binds every import to that profile).
 
-  Flags:
-    --prefix <ns>     Name-space for imports (required; e.g. 'myapi' →
-                      'myapi.get_user', 'myapi.list_items')
-    --profile <name>  Bind every imported template to this profile
-    --tag <t>         Only operations with this OpenAPI tag (repeatable)
-    --server <url>    Override the spec's servers[0].url (e.g. staging)
+  import-openapi <spec.json>
+    OpenAPI v3.x OR Swagger 2.0 JSON. requestBody application/json
+    becomes a single 'body' object param. in:cookie parameters are
+    dropped (profile jar handles those). YAML → convert first with
+    'yq -o=json .'. Extra flags: --tag, --server.
 
-  Notes:
-    - YAML specs: convert to JSON first (e.g. 'yq -o=json . spec.yaml')
-    - requestBody application/json becomes a single 'body' object param
-      (pass '--param body={\"k\":\"v\"}' or '--param body=@file.json')
-    - in:cookie parameters are skipped (cookies come from the profile jar)
-    - Path {id} placeholders become {{id}} in the stored URL
+  import-postman <collection.json>
+    Postman Collection v2.x. Folders flattened into template names
+    (prefix.folder_subfolder_request). Collection + folder variables
+    inherited as ParamSpec defaults. Extra flags: --folder.
+
+  import-har <capture.har>
+    Browser HTTP Archive export. Authorization, Cookie, Set-Cookie,
+    X-CSRF-*, X-XSRF-*, X-API-Key, User-Agent headers stripped at
+    import (your real session shouldn't ship in templates). Extra
+    flags: --url-contains, --dedupe.
+
+  import-http <file.http>
+    VS Code REST Client / JetBrains HTTP Client format. '@var = value'
+    declarations become ParamSpec defaults; '### name' separators
+    label each request.
+
+  import-curl '<curl-command>'
+    One pasted curl invocation → one template. Flag --name required
+    (no filename to derive from). Silently ignores browser "Copy as
+    cURL" noise (-L, -v, --compressed, -b, -A, etc.).
+
+  graphql import-schema <endpoint>
+    Runs an introspection query (via the usual profile/track pipeline)
+    and emits one template per top-level Query/Mutation field, with
+    typed ParamSpec for every arg.
 
 NOTES
   - Templates are audited with their name in the audit log ("template": "...").
