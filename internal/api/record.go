@@ -9,16 +9,20 @@ import (
 )
 
 // writeTrackRecord persists a full-fidelity Request/Response record via
-// internal/track when --track was set. Returns the audit ID for the
-// caller to surface, or "" if persistence failed (best-effort; a track
-// failure must never fail the underlying request).
-func writeTrackRecord(req Request, resp *Response, started time.Time) string {
-	id, err := track.NewID()
+// the provided track.Recorder when --track was set. Returns the audit
+// ID for the caller to surface, or "" if persistence failed (best-
+// effort; a track failure must never fail the underlying request).
+//
+// outErr (when non-nil) populates the record's Error/FixableBy so
+// `audit show <id>` carries the full classification, not just
+// "outcome:error".
+func writeTrackRecord(tracker track.Recorder, req Request, resp *Response, outErr error, started time.Time) string {
+	id, err := tracker.NewID()
 	if err != nil {
 		return ""
 	}
-	rec := buildTrackRecord(id, req, resp, started)
-	if err := track.Write(rec); err != nil {
+	rec := buildTrackRecord(id, req, resp, outErr, started)
+	if err := tracker.Write(rec); err != nil {
 		return ""
 	}
 	return id
@@ -27,16 +31,21 @@ func writeTrackRecord(req Request, resp *Response, started time.Time) string {
 // buildTrackRecord is the pure "translate a completed Do into a track
 // record" mapping. Extracted so track-record shape is unit-testable
 // without a tempdir + FS write.
-func buildTrackRecord(id string, req Request, resp *Response, started time.Time) *track.Record {
+//
+// Outcome is "error" when either outErr is non-nil OR the HTTP status
+// is >= 400 (defensive: classifyHTTP shouldn't miss any 4xx/5xx, but
+// belt-and-braces). Error/FixableBy are populated only when outErr is
+// a classified APIError, mirroring buildAuditEntry.
+func buildTrackRecord(id string, req Request, resp *Response, outErr error, started time.Time) *track.Record {
 	profile := "none"
 	if req.Auth != nil {
 		profile = req.Auth.Name
 	}
 	outcome := "ok"
-	if resp.Status >= 400 {
+	if outErr != nil || resp.Status >= 400 {
 		outcome = "error"
 	}
-	return &track.Record{
+	rec := &track.Record{
 		ID:        id,
 		Timestamp: started.UTC(),
 		Profile:   profile,
@@ -60,6 +69,14 @@ func buildTrackRecord(id string, req Request, resp *Response, started time.Time)
 		Outcome:    outcome,
 		DurationMS: time.Since(started).Milliseconds(),
 	}
+	if outErr != nil {
+		rec.Error = outErr.Error()
+		var ae *agenterrors.APIError
+		if agenterrors.As(outErr, &ae) {
+			rec.FixableBy = string(ae.FixableBy)
+		}
+	}
+	return rec
 }
 
 // buildAuditEntry converts a Do invocation's inputs + outcome into an

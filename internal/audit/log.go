@@ -41,6 +41,23 @@ type Entry struct {
 	FixableBy  string `json:"fixable_by,omitempty"`
 }
 
+// Writer is the narrow "record one audit entry" interface the api
+// package depends on. The default implementation (DefaultWriter) calls
+// the package-level Append; tests can pass a stub to capture entries
+// without touching the filesystem.
+type Writer interface {
+	Append(Entry)
+}
+
+type defaultWriter struct{}
+
+func (defaultWriter) Append(e Entry) { Append(e) }
+
+// DefaultWriter is the process-wide audit writer, backed by the
+// package-level Append (which respects Enabled() and the default
+// config store).
+var DefaultWriter Writer = defaultWriter{}
+
 // Enabled reports whether auditing is on. Controlled by the config key
 // audit.enabled (set via 'agent-deepweb config set audit.enabled false'
 // to disable). Defaults to true.

@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/shhac/agent-deepweb/internal/audit"
 	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
+	"github.com/shhac/agent-deepweb/internal/track"
 )
 
 // Version is the agent-deepweb build version used in the default User-Agent
@@ -86,6 +88,23 @@ type ClientOptions struct {
 	Timeout         time.Duration
 	MaxBytes        int64
 	FollowRedirects bool
+	// Transport, if non-nil, is the http.RoundTripper for the underlying
+	// client. nil means http.DefaultTransport. Provided for tests (to
+	// stub HTTP without httptest) and for any future pooling / proxy
+	// injection. Production CLI callers leave this nil.
+	Transport http.RoundTripper
+	// Clock, if non-nil, returns the "current time" used to stamp
+	// audit entries and track-record timestamps. nil means time.Now.
+	// Tests use this to make durations and ExpiresAt deterministic.
+	Clock func() time.Time
+	// Audit, if non-nil, receives one entry per request. Defaults to
+	// audit.DefaultWriter. Tests pass a stub to assert on audited
+	// values without reading the audit.log file.
+	Audit audit.Writer
+	// Tracker, if non-nil, mints IDs and persists tracked records when
+	// Request.Track is true. Defaults to track.DefaultRecorder. Tests
+	// stub this to capture the Record without tempdir + FS.
+	Tracker track.Recorder
 }
 
 func (c *ClientOptions) applyDefaults() {
@@ -94,6 +113,15 @@ func (c *ClientOptions) applyDefaults() {
 	}
 	if c.MaxBytes == 0 {
 		c.MaxBytes = config.DefaultMaxBytes
+	}
+	if c.Clock == nil {
+		c.Clock = time.Now
+	}
+	if c.Audit == nil {
+		c.Audit = audit.DefaultWriter
+	}
+	if c.Tracker == nil {
+		c.Tracker = track.DefaultRecorder
 	}
 }
 

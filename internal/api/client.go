@@ -24,9 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
-	"github.com/shhac/agent-deepweb/internal/audit"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 )
@@ -45,11 +43,11 @@ import (
 //  7. (always, via deferred) write one audit entry with the outcome
 func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, outErr error) {
 	opts.applyDefaults()
-	started := time.Now()
+	started := opts.Clock()
 
 	// Named returns let the deferred audit see the final resp/outErr
 	// without any manual `outErr = err` bookkeeping at every error site.
-	defer func() { audit.Append(buildAuditEntry(req, started, resp, outErr)) }()
+	defer func() { opts.Audit.Append(buildAuditEntry(req, started, resp, outErr)) }()
 
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil || parsedURL.Host == "" {
@@ -81,6 +79,7 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 		Timeout:       opts.Timeout,
 		Jar:           jar,
 		CheckRedirect: buildRedirectPolicy(req.Auth, opts.FollowRedirects),
+		Transport:     opts.Transport, // nil → http.DefaultTransport
 	}
 
 	httpResp, err := client.Do(httpReq)
@@ -108,19 +107,24 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 		NewCookies:  newCookieViews,
 		Sent:        sent,
 	}
-	if req.Track {
-		resp.AuditID = writeTrackRecord(req, resp, started)
-	}
 
-	if httpResp.StatusCode >= 400 {
-		return resp, classifyHTTP(httpResp.StatusCode, httpResp.Header, req.Auth)
-	}
-	if truncated {
-		return resp, agenterrors.Newf(agenterrors.FixableByAgent,
+	// Classify any HTTP-level error first so the track record can capture
+	// the error message + fixable_by classification. Without this, an
+	// `audit show <id>` for a classified failure would show outcome:error
+	// with no actionable hint — defeating the purpose of tracking.
+	switch {
+	case httpResp.StatusCode >= 400:
+		outErr = classifyHTTP(httpResp.StatusCode, httpResp.Header, req.Auth)
+	case truncated:
+		outErr = agenterrors.Newf(agenterrors.FixableByAgent,
 			"response body exceeded --max-size (%d bytes)", opts.MaxBytes).
 			WithHint("Retry with --max-size <bytes> or narrow the request (query params, pagination)")
 	}
-	return resp, nil
+
+	if req.Track {
+		resp.AuditID = writeTrackRecord(opts.Tracker, req, resp, outErr, started)
+	}
+	return resp, outErr
 }
 
 // bufferRequestBody reads req.Body into a cap-bounded byte slice and

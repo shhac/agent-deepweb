@@ -73,6 +73,25 @@ type Response struct {
 	Truncated   bool        `json:"truncated,omitempty"`
 }
 
+// Recorder is the narrow "mint an ID and persist a Record" interface
+// the api package depends on. DefaultRecorder wires it to the package-
+// level NewID + Write; tests pass a stub to capture records or to
+// simulate persistence failures.
+type Recorder interface {
+	NewID() (string, error)
+	Write(*Record) error
+}
+
+type defaultRecorder struct{}
+
+func (defaultRecorder) NewID() (string, error) { return NewID() }
+
+func (defaultRecorder) Write(r *Record) error { return Write(r) }
+
+// DefaultRecorder is the process-wide track recorder. api.Do falls
+// back to this when ClientOptions.Track is nil.
+var DefaultRecorder Recorder = defaultRecorder{}
+
 // NewID produces a time-sortable identifier suitable for filenames.
 // Format: YYYYMMDDTHHMM-XXXX where XXXX is 4 random hex bytes. Short
 // enough to paste, unique enough for any realistic single-human rate.
