@@ -65,6 +65,8 @@ func (s *Server) register() {
 	s.mux.HandleFunc("/token-protected", s.tokenProtected) // Bearer <LoginToken>
 
 	s.mux.HandleFunc("/graphql", s.graphql)
+	s.mux.HandleFunc("/jsonrpc", s.jsonrpc)
+	s.mux.HandleFunc("/openapi.json", s.openapiSpec)
 
 	s.mux.HandleFunc("/status/", s.status)
 	s.mux.HandleFunc("/slow", s.slow)
@@ -89,6 +91,8 @@ func Routes() []string {
 		"GET  /session           (Cookie session=" + SessionCookie + ")",
 		"GET  /token-protected   (Bearer " + LoginToken + ")",
 		"POST /graphql           (Bearer " + ValidBearerToken + ")",
+		"POST /jsonrpc           (methods: echo, add, whoami — whoami requires Bearer " + ValidBearerToken + ")",
+		"GET  /openapi.json      (static OpenAPI v3 spec covering mockdeep routes)",
 		"GET  /status/<code>",
 		"GET  /slow?ms=<n>",
 		"GET  /large?bytes=<n>",

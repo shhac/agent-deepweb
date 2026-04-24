@@ -1,6 +1,7 @@
 package template
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -42,6 +43,26 @@ func CoerceParam(spec ParamSpec, raw string) (any, error) {
 		} else {
 			v = strings.Split(raw, ",")
 		}
+	case "object":
+		// Accept a JSON object so imports from OpenAPI / Postman /
+		// HAR that surface a requestBody as one opaque 'body' param
+		// stay runnable. The body_template substitution path is
+		// type-preserving, so the object lands as a JSON object not
+		// a string.
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+			return nil, fmt.Errorf("expected JSON object, got %q: %v", raw, err)
+		}
+		v = obj
+	case "array":
+		// Matching "object" — accept a JSON array for parameters
+		// declared with type:array. Distinct from string-array which
+		// is a CLI ergonomics shortcut for comma-separated strings.
+		var arr []any
+		if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+			return nil, fmt.Errorf("expected JSON array, got %q: %v", raw, err)
+		}
+		v = arr
 	default:
 		return nil, fmt.Errorf("unknown parameter type %q", spec.Type)
 	}
