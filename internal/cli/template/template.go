@@ -10,7 +10,6 @@
 package templatecli
 
 import (
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -26,11 +25,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Parameterised request templates (highest-safety mode)",
 	}
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for template",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(cmd, "template", usageText)
 
 	registerList(cmd)
 	registerShow(cmd)

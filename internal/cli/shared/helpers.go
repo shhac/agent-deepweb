@@ -1,10 +1,13 @@
 package shared
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -153,4 +156,16 @@ func ResolveLimits(flagTimeoutMS int, flagMaxBytes int64, g *GlobalFlags) (time.
 		maxBytes = cfg.Defaults.MaxBytes
 	}
 	return time.Duration(timeoutMS) * time.Millisecond, maxBytes
+}
+
+// LLMHelp wires the canonical `<verb> llm-help` subcommand. Every CLI
+// verb in the tree had the same 4-line block; centralising it removes
+// the per-package fmt import and makes the per-verb llm-help docs
+// findable from one place.
+func LLMHelp(parent *cobra.Command, verb, usage string) {
+	parent.AddCommand(&cobra.Command{
+		Use:   "llm-help",
+		Short: "Show detailed reference for " + verb,
+		Run:   func(*cobra.Command, []string) { fmt.Print(usage) },
+	})
 }

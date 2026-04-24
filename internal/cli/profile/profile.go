@@ -22,7 +22,6 @@
 package profile
 
 import (
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -37,11 +36,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Manage stored profiles (auth identities)",
 	}
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for profile",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(cmd, "profile", usageText)
 
 	registerList(cmd)
 	registerShow(cmd)

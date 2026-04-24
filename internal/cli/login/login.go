@@ -8,7 +8,6 @@
 package login
 
 import (
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -24,11 +23,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 			return doLogin(args[0])
 		},
 	}
-	login.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for login/jar",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(login, "login", usageText)
 	root.AddCommand(login)
 
 	registerJar(root)

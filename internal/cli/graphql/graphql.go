@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -52,11 +51,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
 	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for graphql",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(cmd, "graphql", usageText)
 
 	root.AddCommand(cmd)
 }

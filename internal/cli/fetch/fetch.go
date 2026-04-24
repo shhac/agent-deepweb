@@ -9,7 +9,6 @@ package fetch
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -52,18 +51,14 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	}
 	bindFlags(cmd, o)
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for fetch",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(cmd, "fetch", usageText)
 
 	root.AddCommand(cmd)
 }
 
 func bindFlags(cmd *cobra.Command, o *opts) {
 	f := cmd.Flags()
-	f.StringVar(&o.profile, "profile", "", "Profile name, or 'none' for explicit anonymous (falls back to --profile on root or AGENT_DEEPWEB_PROFILE)")
+	f.StringVar(&o.profile, "profile", "", "Profile name, or 'none' for explicit anonymous (falls back to --profile on root or config 'default.profile')")
 	f.StringVar(&o.cookieJar, "cookiejar", "", "Bring-your-own cookie jar (plaintext JSON file). Overrides the profile's encrypted default jar.")
 	f.StringVarP(&o.method, "method", "X", "", "HTTP method (default GET, or POST if body given)")
 	f.StringArrayVarP(&o.headers, "header", "H", nil, "Extra request header (repeatable)")

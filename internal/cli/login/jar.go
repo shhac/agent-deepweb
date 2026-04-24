@@ -1,7 +1,6 @@
 package login
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -21,11 +20,7 @@ func registerJar(root *cobra.Command) {
 		Use:   "jar",
 		Short: "Per-profile cookie jar inspection and management",
 	}
-	jar.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for login/jar",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(jar, "jar", usageText)
 	jar.AddCommand(&cobra.Command{
 		Use:   "status <name>",
 		Short: "Jar metadata summary (cookie count, expiry — no values)",

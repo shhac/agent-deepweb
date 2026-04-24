@@ -20,11 +20,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Use:   "config",
 		Short: "Manage agent-deepweb's persistent user config",
 	}
-	cmd.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for config",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(cmd, "config", usageText)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list-keys",

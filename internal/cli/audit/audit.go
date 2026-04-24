@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -20,11 +19,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Inspect the request audit log",
 	}
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "llm-help",
-		Short: "Show detailed reference for audit",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Print(usageText) },
-	})
+	shared.LLMHelp(cmd, "audit", usageText)
 
 	var nLines int
 	tailCmd := &cobra.Command{
