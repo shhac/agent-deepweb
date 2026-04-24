@@ -9,7 +9,6 @@ import (
 
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
-	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
 )
@@ -25,9 +24,9 @@ func registerTest(parent *cobra.Command) {
 
 func runTest(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	resolved, err := credential.Resolve(name)
+	resolved, err := shared.LoadProfileResolved(name)
 	if err != nil {
-		return shared.Fail(credential.ClassifyLookupErr(err, name))
+		return shared.Fail(err)
 	}
 	if resolved.Health == "" {
 		return shared.Fail(agenterrors.Newf(agenterrors.FixableByHuman,

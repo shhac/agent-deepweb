@@ -91,9 +91,9 @@ func mutateSlice(existing []string, item string, add bool) (updated []string, no
 // secret, which is re-applied via escalateOverwrite. When add=false,
 // `assert` is ignored.
 func mutateDomains(name, domain string, add bool, assert *shared.SecretAssert) error {
-	c, err := credential.GetMetadata(name)
+	c, err := shared.LoadProfileMetadata(name)
 	if err != nil {
-		return shared.Fail(credential.ClassifyLookupErr(err, name))
+		return shared.Fail(err)
 	}
 	if add {
 		if err := shared.ApplySecretAssert(c, assert); err != nil {
@@ -113,9 +113,9 @@ func mutateDomains(name, domain string, add bool, assert *shared.SecretAssert) e
 }
 
 func mutatePaths(name, pattern string, add bool, assert *shared.SecretAssert) error {
-	c, err := credential.GetMetadata(name)
+	c, err := shared.LoadProfileMetadata(name)
 	if err != nil {
-		return shared.Fail(credential.ClassifyLookupErr(err, name))
+		return shared.Fail(err)
 	}
 	if add {
 		if err := shared.ApplySecretAssert(c, assert); err != nil {

@@ -10,7 +10,6 @@ package fetch
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -138,18 +137,11 @@ func writeResponse(rawURL string, auth *credential.Resolved, resp *api.Response,
 	if resp == nil {
 		return
 	}
-	f, _ := output.ParseFormat(format)
-	switch f {
-	case output.FormatRaw:
-		_, _ = os.Stdout.Write(resp.Body)
-		return
-	case output.FormatText:
-		fmt.Printf("HTTP %d %s\n\n", resp.Status, resp.StatusText)
-		_, _ = os.Stdout.Write(resp.Body)
-		return
+	var extras map[string]any
+	if len(resp.NewCookies) > 0 {
+		extras = map[string]any{"new_cookies": resp.NewCookies}
 	}
-
-	env := output.BuildHTTPEnvelope(output.EnvelopeIn{
+	output.RenderResponse(output.EnvelopeIn{
 		URL:         rawURL,
 		Auth:        auth,
 		Status:      resp.Status,
@@ -158,9 +150,5 @@ func writeResponse(rawURL string, auth *credential.Resolved, resp *api.Response,
 		ContentType: resp.ContentType,
 		Body:        resp.Body,
 		Truncated:   resp.Truncated,
-	})
-	if len(resp.NewCookies) > 0 {
-		env["new_cookies"] = resp.NewCookies
-	}
-	output.PrintJSON(env)
+	}, resp.Status, resp.StatusText, resp.Body, format, extras)
 }

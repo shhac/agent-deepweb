@@ -120,3 +120,66 @@ func (t *Template) Validate(rawParams map[string]string) (map[string]any, error)
 	}
 	return out, nil
 }
+
+// DeclaredPlaceholders returns all {{name}} references in a template
+// (URL, query values, header values, body_template). Used by Lint to
+// catch missing ParamSpecs at import time.
+func (t *Template) DeclaredPlaceholders() []string {
+	seen := map[string]struct{}{}
+	collect := func(s string) {
+		for _, m := range placeholderRE.FindAllStringSubmatch(s, -1) {
+			seen[m[1]] = struct{}{}
+		}
+	}
+	collect(t.URL)
+	for _, v := range t.Query {
+		collect(v)
+	}
+	for _, v := range t.Headers {
+		collect(v)
+	}
+	if len(t.BodyTemplate) > 0 {
+		collect(string(t.BodyTemplate))
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	return out
+}
+
+// Lint reports template-definition problems: missing url/method, unknown
+// body format, params referenced but not declared, params declared but
+// unreferenced.
+func (t *Template) Lint() []string {
+	var issues []string
+	if t.URL == "" {
+		issues = append(issues, "url is empty")
+	}
+	if t.Method == "" {
+		issues = append(issues, "method is empty")
+	}
+	switch strings.ToLower(t.BodyFormat) {
+	case "", "json", "form", "raw":
+	default:
+		issues = append(issues, fmt.Sprintf("unknown body_format %q (use json|form|raw)", t.BodyFormat))
+	}
+	declared := t.DeclaredPlaceholders()
+	specMap := map[string]struct{}{}
+	for n := range t.Parameters {
+		specMap[n] = struct{}{}
+	}
+	declaredMap := map[string]struct{}{}
+	for _, d := range declared {
+		declaredMap[d] = struct{}{}
+		if _, ok := specMap[d]; !ok {
+			issues = append(issues, fmt.Sprintf("placeholder {{%s}} used but no parameter declared", d))
+		}
+	}
+	for n := range specMap {
+		if _, ok := declaredMap[n]; !ok {
+			issues = append(issues, fmt.Sprintf("parameter %q declared but never referenced", n))
+		}
+	}
+	return issues
+}

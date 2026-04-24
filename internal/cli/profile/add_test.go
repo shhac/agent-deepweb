@@ -3,63 +3,67 @@ package profile
 import (
 	"strings"
 	"testing"
-
-	"github.com/shhac/agent-deepweb/internal/credential"
 )
 
-// Per-type Secrets factories. Table-tested for both happy paths and
-// missing-required-field errors. These are pure — no HTTP, no FS, no
-// keychain.
-func TestBuildBearerSecrets(t *testing.T) {
-	s, err := buildBearerSecrets(&addOpts{token: "abc-xyz", tokenHeaderSet: "X-Auth", tokenPrefixSet: "T "})
+// buildSecretsForAdd is the unified validator + assembler used by the
+// `profile add` RunE. Per-type required-field rules are delegated to
+// credential.BuildSecretsCore (covered separately in the credential
+// package); these tests focus on the form-only field layering and the
+// error wrapping ("for <type> type").
+func TestBuildSecretsForAdd_Bearer(t *testing.T) {
+	s, err := buildSecretsForAdd(&addOpts{
+		authType: "bearer", token: "abc-xyz", tokenHeaderSet: "X-Auth", tokenPrefixSet: "T ",
+	})
 	if err != nil || s.Token != "abc-xyz" || s.Header != "X-Auth" || s.Prefix != "T " {
 		t.Errorf("happy path: %+v %v", s, err)
 	}
-	if _, err := buildBearerSecrets(&addOpts{}); err == nil {
-		t.Error("missing token should error")
+	_, err = buildSecretsForAdd(&addOpts{authType: "bearer"})
+	if err == nil || !strings.Contains(err.Error(), "for bearer type") {
+		t.Errorf("missing token: want 'for bearer type', got %v", err)
 	}
 }
 
-func TestBuildBasicSecrets(t *testing.T) {
-	s, err := buildBasicSecrets(&addOpts{username: "u", password: "p"})
+func TestBuildSecretsForAdd_Basic(t *testing.T) {
+	s, err := buildSecretsForAdd(&addOpts{authType: "basic", username: "u", password: "p"})
 	if err != nil || s.Username != "u" || s.Password != "p" {
 		t.Errorf("happy path: %+v %v", s, err)
 	}
-	for _, o := range []*addOpts{{username: "u"}, {password: "p"}, {}} {
-		if _, err := buildBasicSecrets(o); err == nil {
+	for _, o := range []*addOpts{{authType: "basic", username: "u"}, {authType: "basic", password: "p"}, {authType: "basic"}} {
+		if _, err := buildSecretsForAdd(o); err == nil {
 			t.Errorf("missing field should error for %+v", o)
 		}
 	}
 }
 
-func TestBuildCookieSecrets(t *testing.T) {
-	s, err := buildCookieSecrets(&addOpts{cookie: "session=abc"})
+func TestBuildSecretsForAdd_Cookie(t *testing.T) {
+	s, err := buildSecretsForAdd(&addOpts{authType: "cookie", cookie: "session=abc"})
 	if err != nil || s.Cookie != "session=abc" {
 		t.Errorf("happy path: %+v %v", s, err)
 	}
-	if _, err := buildCookieSecrets(&addOpts{}); err == nil {
+	if _, err := buildSecretsForAdd(&addOpts{authType: "cookie"}); err == nil {
 		t.Error("missing cookie should error")
 	}
 }
 
-func TestBuildCustomSecrets(t *testing.T) {
-	s, err := buildCustomSecrets(&addOpts{customHeaders: []string{"X-Api-Key: k", "X-Env: prod"}})
+func TestBuildSecretsForAdd_Custom(t *testing.T) {
+	s, err := buildSecretsForAdd(&addOpts{authType: "custom", customHeaders: []string{"X-Api-Key: k", "X-Env: prod"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if s.Headers["X-Api-Key"] != "k" || s.Headers["X-Env"] != "prod" {
 		t.Errorf("headers: %+v", s.Headers)
 	}
-	if _, err := buildCustomSecrets(&addOpts{}); err == nil {
+	if _, err := buildSecretsForAdd(&addOpts{authType: "custom"}); err == nil {
 		t.Error("no custom-headers should error")
 	}
-	if _, err := buildCustomSecrets(&addOpts{customHeaders: []string{"no-colon"}}); err == nil {
+	if _, err := buildSecretsForAdd(&addOpts{authType: "custom", customHeaders: []string{"no-colon"}}); err == nil {
 		t.Error("malformed custom-header should error")
 	}
 }
 
-func TestBuildFormSecrets(t *testing.T) {
-	s, err := buildFormSecrets(&addOpts{
+func TestBuildSecretsForAdd_Form(t *testing.T) {
+	s, err := buildSecretsForAdd(&addOpts{
+		authType: "form",
 		loginURL: "https://api.example.com/login",
 		username: "u", password: "p",
 		extraFields: []string{"grant_type=password", "scope=read"},
@@ -78,27 +82,24 @@ func TestBuildFormSecrets(t *testing.T) {
 		name string
 		o    *addOpts
 	}{
-		{"missing login-url", &addOpts{username: "u", password: "p"}},
-		{"missing username", &addOpts{loginURL: "x", password: "p"}},
-		{"missing password", &addOpts{loginURL: "x", username: "u"}},
-		{"malformed extra-field", &addOpts{loginURL: "x", username: "u", password: "p", extraFields: []string{"no-equals"}}},
+		{"missing login-url", &addOpts{authType: "form", username: "u", password: "p"}},
+		{"missing username", &addOpts{authType: "form", loginURL: "x", password: "p"}},
+		{"missing password", &addOpts{authType: "form", loginURL: "x", username: "u"}},
+		{"malformed extra-field", &addOpts{authType: "form", loginURL: "x", username: "u", password: "p", extraFields: []string{"no-equals"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := buildFormSecrets(tc.o); err == nil {
+			if _, err := buildSecretsForAdd(tc.o); err == nil {
 				t.Error("expected error")
 			}
 		})
 	}
 }
 
-// Sanity that the secretsBuilders table is complete for every declared
-// auth type constant.
-func TestSecretsBuildersCovered(t *testing.T) {
-	for _, tp := range []string{credential.AuthBearer, credential.AuthBasic, credential.AuthCookie, credential.AuthCustom, credential.AuthForm} {
-		if _, ok := secretsBuilders[tp]; !ok {
-			t.Errorf("missing builder for %q", tp)
-		}
+func TestBuildSecretsForAdd_UnknownType(t *testing.T) {
+	_, err := buildSecretsForAdd(&addOpts{authType: "mystery"})
+	if err == nil || !strings.Contains(err.Error(), "unknown auth type") {
+		t.Errorf("want unknown-auth error, got %v", err)
 	}
 }
 

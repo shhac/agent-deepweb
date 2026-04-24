@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -124,7 +122,7 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 // buildGraphQLPayload assembles the {query, variables?, operationName?} JSON
 // body from the flag state. Fails fast with fixable_by:agent on bad input.
 func buildGraphQLPayload(o *opts) ([]byte, error) {
-	query, err := loadInline(o.query)
+	query, err := shared.LoadInlineSpec(o.query)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +131,7 @@ func buildGraphQLPayload(o *opts) ([]byte, error) {
 		payload["operationName"] = o.operationName
 	}
 	if o.variables != "" {
-		v, err := loadInline(o.variables)
+		v, err := shared.LoadInlineSpec(o.variables)
 		if err != nil {
 			return nil, err
 		}
@@ -195,17 +193,3 @@ func classifyGraphQL(message string, extensions map[string]any) *agenterrors.API
 		WithHint("Check the query, variables, and field selection")
 }
 
-func loadInline(spec string) ([]byte, error) {
-	if spec == "@-" {
-		return io.ReadAll(os.Stdin)
-	}
-	if strings.HasPrefix(spec, "@") {
-		b, err := os.ReadFile(spec[1:])
-		if err != nil {
-			return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent).
-				WithHint("Check the path and ensure the file is readable")
-		}
-		return b, nil
-	}
-	return []byte(spec), nil
-}

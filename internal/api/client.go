@@ -7,6 +7,7 @@
 // File layout:
 //
 //	client.go   Request, Response, ClientOptions, Do (orchestrator)
+//	jar.go      primeCookieJar / harvestJarCookies + helpers
 //	request.go  buildHTTPRequest, resolveUserAgent, viewPersisted
 //	scheme.go   enforceScheme, isLoopback
 //	classify.go classifyTransport, classifyHTTP
@@ -19,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"time"
 
@@ -27,7 +27,6 @@ import (
 	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
-	"golang.org/x/net/publicsuffix"
 )
 
 // Version is the agent-deepweb build version used in the default User-Agent
@@ -110,39 +109,33 @@ func defaultStr(s, d string) string {
 //  3. build http.Request (headers, auth, UA)
 //  4. execute → read capped body → harvest cookies → redact → classify
 //  5. (always) write one audit entry with the outcome
-func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error) {
+func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, outErr error) {
 	opts.applyDefaults()
 	started := time.Now()
 
-	var resp *Response
-	var outErr error
-	// Closure captures resp/outErr by reference — a plain defer is enough;
-	// no pointer-to-pointer, no named returns.
+	// Named returns let the deferred audit see the final resp/outErr
+	// without any manual `outErr = err` bookkeeping at every error site.
 	defer func() { audit.Append(buildAuditEntry(req, started, resp, outErr)) }()
 
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil || parsedURL.Host == "" {
-		outErr = agenterrors.Newf(agenterrors.FixableByAgent,
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent,
 			"URL %q is not absolute", req.URL).
 			WithHint("Use scheme://host/path form")
-		return nil, outErr
 	}
 
 	if err := enforceScheme(parsedURL, req.Auth); err != nil {
-		outErr = err
-		return nil, outErr
+		return nil, err
 	}
 
 	jar, err := primeCookieJar(req.Auth, req.JarPath, parsedURL)
 	if err != nil {
-		outErr = err
-		return nil, outErr
+		return nil, err
 	}
 
 	httpReq, err := buildHTTPRequest(ctx, req)
 	if err != nil {
-		outErr = agenterrors.Wrap(err, agenterrors.FixableByAgent)
-		return nil, outErr
+		return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent)
 	}
 
 	client := &http.Client{
@@ -153,15 +146,13 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
-		outErr = classifyTransport(err)
-		return nil, outErr
+		return nil, classifyTransport(err)
 	}
 	defer httpResp.Body.Close() //nolint:errcheck
 
 	body, truncated, err := readCappedBody(httpResp.Body, opts.MaxBytes)
 	if err != nil {
-		outErr = agenterrors.Wrap(err, agenterrors.FixableByRetry)
-		return nil, outErr
+		return nil, agenterrors.Wrap(err, agenterrors.FixableByRetry)
 	}
 
 	newCookieViews := harvestJarCookies(req.Auth, req.JarPath, httpResp, parsedURL)
@@ -185,14 +176,12 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (*Response, error)
 	}
 
 	if httpResp.StatusCode >= 400 {
-		outErr = classifyHTTP(httpResp.StatusCode, httpResp.Header, req.Auth)
-		return resp, outErr
+		return resp, classifyHTTP(httpResp.StatusCode, httpResp.Header, req.Auth)
 	}
 	if truncated {
-		outErr = agenterrors.Newf(agenterrors.FixableByAgent,
+		return resp, agenterrors.Newf(agenterrors.FixableByAgent,
 			"response body exceeded --max-size (%d bytes)", opts.MaxBytes).
 			WithHint("Retry with --max-size <bytes> or narrow the request (query params, pagination)")
-		return resp, outErr
 	}
 	return resp, nil
 }
@@ -269,37 +258,6 @@ func buildAuditEntry(req Request, started time.Time, resp *Response, outErr erro
 	return e
 }
 
-// primeCookieJar returns a cookiejar seeded from the profile's stored
-// jar (for any profile type). An expired session-bound jar (form auth
-// only — that's the only type with a session-level expiry) short-circuits
-// with fixable_by:human before any network call.
-//
-// jarPath, if non-empty, points to a bring-your-own plaintext jar that
-// overrides the profile's encrypted default. The expiry check is skipped
-// for BYO jars — a caller using `--cookiejar` explicitly owns lifecycle.
-func primeCookieJar(auth *credential.Resolved, jarPath string, parsedURL *url.URL) (http.CookieJar, error) {
-	if jarPath != "" {
-		if jarState, err := credential.ReadJarPlain(jarPath); err == nil {
-			if cj, _ := jarState.NewCookieJar(parsedURL); cj != nil {
-				return cj, nil
-			}
-		}
-	} else if auth != nil {
-		if jarState, err := credential.ReadJar(auth.Name); err == nil {
-			if auth.Type == credential.AuthForm && jarState.IsExpired() {
-				return nil, agenterrors.Newf(agenterrors.FixableByHuman,
-					"session for %q is expired", auth.Name).
-					WithHint("Ask the user to run 'agent-deepweb login " + auth.Name + "'")
-			}
-			if cj, _ := jarState.NewCookieJar(parsedURL); cj != nil {
-				return cj, nil
-			}
-		}
-	}
-	cj, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
-	return cj, nil
-}
-
 // readCappedBody reads at most maxBytes from r. Returns truncated=true when
 // the underlying stream had more data than we kept.
 func readCappedBody(r io.Reader, maxBytes int64) ([]byte, bool, error) {
@@ -312,55 +270,4 @@ func readCappedBody(r io.Reader, maxBytes int64) ([]byte, bool, error) {
 		return body[:maxBytes], true, nil
 	}
 	return body, false, nil
-}
-
-// harvestJarCookies captures Set-Cookie headers from a response into
-// the appropriate jar (BYO plaintext if jarPath != "", else the
-// profile's encrypted default), preserving per-cookie sensitivity, and
-// returns a list of newly-captured cookie views for the envelope.
-//
-// Returns nil when no profile is attached AND no BYO jar was specified
-// (the truly-anonymous `--profile none` case — cookies are accepted by
-// the in-memory jar for the duration of the request but not persisted).
-func harvestJarCookies(auth *credential.Resolved, jarPath string, httpResp *http.Response, parsedURL *url.URL) []credential.CookieView {
-	if len(httpResp.Cookies()) == 0 {
-		return nil
-	}
-	if jarPath == "" && auth == nil {
-		return nil
-	}
-
-	var (
-		jarState *credential.Jar
-		write    func(*credential.Jar) error
-		err      error
-	)
-	if jarPath != "" {
-		jarState, err = credential.ReadJarPlain(jarPath)
-		if err != nil {
-			jarState = &credential.Jar{Acquired: time.Now().UTC()}
-		}
-		write = func(j *credential.Jar) error { return credential.WriteJarPlain(jarPath, j) }
-	} else {
-		jarState, err = credential.ReadJar(auth.Name)
-		if err != nil {
-			jarState = &credential.Jar{Name: auth.Name, Acquired: time.Now().UTC()}
-		}
-		write = credential.WriteJar
-	}
-
-	before := make(map[string]struct{}, len(jarState.Cookies))
-	for _, c := range jarState.Cookies {
-		before[c.Name+"\x00"+c.Domain+"\x00"+c.Path] = struct{}{}
-	}
-	if changed := jarState.HarvestResponse(httpResp, parsedURL); changed {
-		_ = write(jarState)
-	}
-	var added []credential.CookieView
-	for _, c := range jarState.Cookies {
-		if _, had := before[c.Name+"\x00"+c.Domain+"\x00"+c.Path]; !had {
-			added = append(added, viewPersisted(c))
-		}
-	}
-	return added
 }

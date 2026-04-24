@@ -52,82 +52,45 @@ type addOpts struct {
 	sessionTTL      string
 }
 
-// secretsBuilder is a per-auth-type factory: given the opts, produce the
-// stored Secrets or a classified error. Splitting it out of the RunE makes
-// each branch independently unit-testable.
-type secretsBuilder func(o *addOpts) (credential.Secrets, error)
-
-var secretsBuilders = map[string]secretsBuilder{
-	credential.AuthBearer: buildBearerSecrets,
-	credential.AuthBasic:  buildBasicSecrets,
-	credential.AuthCookie: buildCookieSecrets,
-	credential.AuthCustom: buildCustomSecrets,
-	credential.AuthForm:   buildFormSecrets,
-}
-
-func buildBearerSecrets(o *addOpts) (credential.Secrets, error) {
-	if o.token == "" {
-		return credential.Secrets{}, agenterrors.New("--token is required for bearer type", agenterrors.FixableByAgent)
+// buildSecretsForAdd produces the stored Secrets for a `profile add` call,
+// combining the secret-bearing core (validated via the shared
+// credential.BuildSecretsCore — same validator used by the escalation
+// path) with form-only non-secret fields (LoginURL, TokenPath, etc.).
+//
+// Single source of truth: changing the per-type required-flag rules in
+// BuildSecretsCore automatically affects both add-time and escalate-time
+// validation, no drift.
+func buildSecretsForAdd(o *addOpts) (credential.Secrets, error) {
+	s, err := credential.BuildSecretsCore(o.authType, credential.SecretInputs{
+		Token:         o.token,
+		TokenHeader:   o.tokenHeaderSet,
+		TokenPrefix:   o.tokenPrefixSet,
+		Username:      o.username,
+		Password:      o.password,
+		Cookie:        o.cookie,
+		CustomHeaders: o.customHeaders,
+	})
+	if err != nil {
+		return credential.Secrets{}, agenterrors.Newf(agenterrors.FixableByAgent,
+			"%s for %s type", err.Error(), o.authType)
 	}
-	return credential.Secrets{
-		Token:  o.token,
-		Header: o.tokenHeaderSet,
-		Prefix: o.tokenPrefixSet,
-	}, nil
-}
-
-func buildBasicSecrets(o *addOpts) (credential.Secrets, error) {
-	if o.username == "" || o.password == "" {
-		return credential.Secrets{}, agenterrors.New("--username and --password are required for basic type", agenterrors.FixableByAgent)
+	if o.authType != credential.AuthForm {
+		return s, nil
 	}
-	return credential.Secrets{Username: o.username, Password: o.password}, nil
-}
-
-func buildCookieSecrets(o *addOpts) (credential.Secrets, error) {
-	if o.cookie == "" {
-		return credential.Secrets{}, agenterrors.New("--cookie is required for cookie type", agenterrors.FixableByAgent)
-	}
-	return credential.Secrets{Cookie: o.cookie}, nil
-}
-
-func buildCustomSecrets(o *addOpts) (credential.Secrets, error) {
-	if len(o.customHeaders) == 0 {
-		return credential.Secrets{}, agenterrors.New("--custom-header is required for custom type", agenterrors.FixableByAgent)
-	}
-	headers := map[string]string{}
-	for _, h := range o.customHeaders {
-		k, v, ok := shared.SplitHeader(h)
-		if !ok {
-			return credential.Secrets{}, agenterrors.Newf(agenterrors.FixableByAgent,
-				"malformed --custom-header %q", h)
-		}
-		headers[k] = v
-	}
-	return credential.Secrets{Headers: headers}, nil
-}
-
-func buildFormSecrets(o *addOpts) (credential.Secrets, error) {
+	// Form-only: layer on the non-secret config fields.
 	if o.loginURL == "" {
 		return credential.Secrets{}, agenterrors.New("--login-url is required for form type", agenterrors.FixableByAgent)
 	}
-	if o.username == "" || o.password == "" {
-		return credential.Secrets{}, agenterrors.New("--username and --password are required for form type", agenterrors.FixableByAgent)
-	}
-	s := credential.Secrets{
-		LoginURL:      o.loginURL,
-		LoginMethod:   o.loginMethod,
-		LoginFormat:   o.loginFormat,
-		Username:      o.username,
-		Password:      o.password,
-		UsernameField: o.usernameField,
-		PasswordField: o.passwordField,
-		SuccessStatus: o.successStatus,
-		TokenPath:     o.tokenPath,
-		SessionTTL:    o.sessionTTL,
-		// Token header/prefix for the Bearer produced by login.
-		Header: o.formTokenHeader,
-		Prefix: o.formTokenPrefix,
-	}
+	s.LoginURL = o.loginURL
+	s.LoginMethod = o.loginMethod
+	s.LoginFormat = o.loginFormat
+	s.UsernameField = o.usernameField
+	s.PasswordField = o.passwordField
+	s.SuccessStatus = o.successStatus
+	s.TokenPath = o.tokenPath
+	s.SessionTTL = o.sessionTTL
+	s.Header = o.formTokenHeader
+	s.Prefix = o.formTokenPrefix
 	if len(o.extraFields) > 0 {
 		s.ExtraFields = map[string]string{}
 		for _, f := range o.extraFields {
@@ -156,17 +119,11 @@ func registerAdd(parent *cobra.Command) {
 				return shared.Fail(agenterrors.New("at least one --domain is required", agenterrors.FixableByAgent).
 					WithHint("A credential is only used on hosts in its allowlist (host or host:port)"))
 			}
-			builder, ok := secretsBuilders[o.authType]
-			if !ok {
-				return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent, "unknown --type %q", o.authType).
-					WithHint("One of: bearer, basic, cookie, form, custom"))
-			}
-
 			defaultHeaders, err := parseHeaderList(o.headers)
 			if err != nil {
 				return shared.Fail(err)
 			}
-			secrets, err := builder(o)
+			secrets, err := buildSecretsForAdd(o)
 			if err != nil {
 				return shared.Fail(err)
 			}

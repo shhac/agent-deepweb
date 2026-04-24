@@ -47,9 +47,9 @@ func registerSetDefaultHeader(parent *cobra.Command) {
 			if !ok {
 				return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent, "malformed header %q", args[1]))
 			}
-			c, err := credential.GetMetadata(args[0])
+			c, err := shared.LoadProfileMetadata(args[0])
 			if err != nil {
-				return shared.Fail(credential.ClassifyLookupErr(err, args[0]))
+				return shared.Fail(err)
 			}
 			if err := shared.ApplySecretAssert(c, a); err != nil {
 				return shared.Fail(err)
@@ -75,9 +75,9 @@ func registerUnsetDefaultHeader(parent *cobra.Command) {
 		Short: "Remove a default header by key",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := credential.GetMetadata(args[0])
+			c, err := shared.LoadProfileMetadata(args[0])
 			if err != nil {
-				return shared.Fail(credential.ClassifyLookupErr(err, args[0]))
+				return shared.Fail(err)
 			}
 			if c.DefaultHeaders != nil {
 				delete(c.DefaultHeaders, args[1])
@@ -98,9 +98,9 @@ func registerSetAllowHTTP(parent *cobra.Command) {
 		Short: "Permit http:// for this credential (re-supply credential's primary secret)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := credential.GetMetadata(args[0])
+			c, err := shared.LoadProfileMetadata(args[0])
 			if err != nil {
-				return shared.Fail(credential.ClassifyLookupErr(err, args[0]))
+				return shared.Fail(err)
 			}
 			if err := shared.ApplySecretAssert(c, a); err != nil {
 				return shared.Fail(err)

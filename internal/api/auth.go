@@ -18,8 +18,10 @@ func ApplyAuth(req *http.Request, resolved *credential.Resolved) {
 		return
 	}
 	switch resolved.Type {
-	case credential.AuthBearer, credential.AuthCustom:
-		applyBearerOrCustom(req, resolved)
+	case credential.AuthBearer:
+		applyBearer(req, resolved)
+	case credential.AuthCustom:
+		applyCustom(req, resolved)
 	case credential.AuthBasic:
 		applyBasic(req, resolved)
 	case credential.AuthCookie:
@@ -29,24 +31,20 @@ func ApplyAuth(req *http.Request, resolved *credential.Resolved) {
 	}
 }
 
-func applyBearerOrCustom(req *http.Request, r *credential.Resolved) {
-	if r.Type == credential.AuthCustom {
-		for k, v := range r.Secrets.Headers {
-			req.Header.Set(k, v)
-		}
-	}
+func applyBearer(req *http.Request, r *credential.Resolved) {
 	if r.Secrets.Token == "" {
 		return
 	}
-	header := r.Secrets.Header
-	if header == "" {
-		header = "Authorization"
+	setBearerLikeHeader(req, r.Secrets.Header, r.Secrets.Prefix, r.Secrets.Token)
+}
+
+// applyCustom sets each header in r.Secrets.Headers verbatim. The token
+// fields (Header/Prefix/Token) are NOT applied — that's the bearer arm —
+// so a custom credential is purely "attach these headers, nothing else."
+func applyCustom(req *http.Request, r *credential.Resolved) {
+	for k, v := range r.Secrets.Headers {
+		req.Header.Set(k, v)
 	}
-	prefix := r.Secrets.Prefix
-	if prefix == "" && header == "Authorization" {
-		prefix = "Bearer "
-	}
-	req.Header.Set(header, prefix+r.Secrets.Token)
 }
 
 func applyBasic(req *http.Request, r *credential.Resolved) {
@@ -71,13 +69,18 @@ func applyFormToken(req *http.Request, r *credential.Resolved) {
 	if err != nil || sess.Token == "" {
 		return
 	}
-	header := sess.TokenHeader
+	setBearerLikeHeader(req, sess.TokenHeader, sess.TokenPrefix, sess.Token)
+}
+
+// setBearerLikeHeader writes "<header>: <prefix><token>" to req with the
+// Authorization/Bearer defaults filled in. Both bearer-token and form-
+// auth share this shape; centralising it avoids drift between the two.
+func setBearerLikeHeader(req *http.Request, header, prefix, token string) {
 	if header == "" {
 		header = "Authorization"
 	}
-	prefix := sess.TokenPrefix
 	if prefix == "" && header == "Authorization" {
 		prefix = "Bearer "
 	}
-	req.Header.Set(header, prefix+sess.Token)
+	req.Header.Set(header, prefix+token)
 }

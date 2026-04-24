@@ -122,9 +122,9 @@ func markSensitivity(sensitive bool, assert *shared.SecretAssert) func(*cobra.Co
 		name := args[0]
 		cookies := args[1:]
 		if assert != nil {
-			c, err := credential.GetMetadata(name)
+			c, err := shared.LoadProfileMetadata(name)
 			if err != nil {
-				return shared.Fail(credential.ClassifyLookupErr(err, name))
+				return shared.Fail(err)
 			}
 			if err := shared.ApplySecretAssert(c, assert); err != nil {
 				return shared.Fail(err)

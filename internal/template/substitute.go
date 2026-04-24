@@ -84,21 +84,27 @@ func walkBody(v any, params map[string]any) (any, error) {
 		}
 		return out, nil
 	case string:
-		// Whole-string placeholder → type-preserving substitution.
-		if m := placeholderRE.FindStringSubmatch(x); m != nil && m[0] == strings.TrimSpace(x) {
-			key := m[1]
-			p, ok := params[key]
-			if !ok {
-				return nil, fmt.Errorf("no value for placeholder %q", key)
-			}
-			return p, nil
-		}
-		// Inline embed → string substitution.
-		s, err := SubstituteString(x, params, false)
-		return s, err
+		return substituteStringValue(x, params)
 	default:
 		return v, nil
 	}
+}
+
+// substituteStringValue is the load-bearing rule of body templating:
+// a string that IS a single {{placeholder}} gets the typed value (so an
+// int param becomes a JSON number, an array param a JSON array); a
+// string with embedded placeholders is rendered as a string. This split
+// is what lets templates produce well-typed JSON bodies.
+func substituteStringValue(x string, params map[string]any) (any, error) {
+	if m := placeholderRE.FindStringSubmatch(x); m != nil && m[0] == strings.TrimSpace(x) {
+		key := m[1]
+		p, ok := params[key]
+		if !ok {
+			return nil, fmt.Errorf("no value for placeholder %q", key)
+		}
+		return p, nil
+	}
+	return SubstituteString(x, params, false)
 }
 
 func formatScalar(v any) string {
@@ -157,64 +163,3 @@ func ExpandHeaders(headersTpl map[string]string, params map[string]any) (map[str
 	return out, nil
 }
 
-// DeclaredPlaceholders returns all {{name}} references in a template
-// (URL, query values, header values, body_template). Used by Validate to
-// catch missing ParamSpecs at import time.
-func (t *Template) DeclaredPlaceholders() []string {
-	seen := map[string]struct{}{}
-	collect := func(s string) {
-		for _, m := range placeholderRE.FindAllStringSubmatch(s, -1) {
-			seen[m[1]] = struct{}{}
-		}
-	}
-	collect(t.URL)
-	for _, v := range t.Query {
-		collect(v)
-	}
-	for _, v := range t.Headers {
-		collect(v)
-	}
-	if len(t.BodyTemplate) > 0 {
-		collect(string(t.BodyTemplate))
-	}
-	out := make([]string, 0, len(seen))
-	for k := range seen {
-		out = append(out, k)
-	}
-	return out
-}
-
-// Lint reports template-definition problems: unknown body format, params
-// referenced but not declared, params declared but unreferenced.
-func (t *Template) Lint() []string {
-	var issues []string
-	if t.URL == "" {
-		issues = append(issues, "url is empty")
-	}
-	if t.Method == "" {
-		issues = append(issues, "method is empty")
-	}
-	switch strings.ToLower(t.BodyFormat) {
-	case "", "json", "form", "raw":
-	default:
-		issues = append(issues, fmt.Sprintf("unknown body_format %q (use json|form|raw)", t.BodyFormat))
-	}
-	declared := t.DeclaredPlaceholders()
-	specMap := map[string]struct{}{}
-	for n := range t.Parameters {
-		specMap[n] = struct{}{}
-	}
-	declaredMap := map[string]struct{}{}
-	for _, d := range declared {
-		declaredMap[d] = struct{}{}
-		if _, ok := specMap[d]; !ok {
-			issues = append(issues, fmt.Sprintf("placeholder {{%s}} used but no parameter declared", d))
-		}
-	}
-	for n := range specMap {
-		if _, ok := declaredMap[n]; !ok {
-			issues = append(issues, fmt.Sprintf("parameter %q declared but never referenced", n))
-		}
-	}
-	return issues
-}

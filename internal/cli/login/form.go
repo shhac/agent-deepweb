@@ -4,13 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/net/publicsuffix"
@@ -28,17 +24,15 @@ import (
 //  3. Build the POST body (form or JSON) from username/password/extra_fields.
 //  4. Issue the login request with a fresh cookiejar + 30s timeout.
 //  5. Check the HTTP status matches success-status (default 200).
-//  6. Harvest Set-Cookie headers into the session, preserving sensitivity.
-//  7. If token-path is set, extract the JSON token and store it.
-//  8. Compute expiry = min(session-ttl, latest-cookie-expiry, +24h).
-//  9. Write the session file.
+//  6. Assemble a Jar from the response (cookies + token + expiry).
+//  7. Write the jar file.
 //
 // Nothing from the response body is returned to the caller — we print
-// only the session summary (cookie count, sensitive count, expiry).
+// only the jar summary (cookie count, sensitive count, expiry).
 func doLogin(name string) error {
-	resolved, err := credential.Resolve(name)
+	resolved, err := shared.LoadProfileResolved(name)
 	if err != nil {
-		return shared.Fail(credential.ClassifyLookupErr(err, name))
+		return shared.Fail(err)
 	}
 	if resolved.Type != credential.AuthForm {
 		return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent,
@@ -73,27 +67,10 @@ func doLogin(name string) error {
 			WithHint("Check the credential's --username / --password / --login-url with the user"))
 	}
 
-	sess := &credential.Jar{Name: name, Acquired: time.Now().UTC()}
-	sess.HarvestResponse(resp, loginURL)
-	mergeJarCookies(sess, jar, loginURL)
-
-	if resolved.Secrets.TokenPath != "" {
-		bodyBytes, _ := readCapped(resp.Body, 2*1024*1024)
-		token, err := extractJSONToken(bodyBytes, resolved.Secrets.TokenPath)
-		if err != nil {
-			return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman).
-				WithHint("Check --token-path matches the login response shape"))
-		}
-		if token == "" {
-			return shared.Fail(agenterrors.Newf(agenterrors.FixableByHuman,
-				"login response had no value at --token-path %q", resolved.Secrets.TokenPath))
-		}
-		sess.Token = token
-		sess.TokenHeader = resolved.Secrets.Header
-		sess.TokenPrefix = resolved.Secrets.Prefix
+	sess, err := assembleJar(name, resolved, resp, jar, loginURL)
+	if err != nil {
+		return shared.Fail(err)
 	}
-
-	sess.Expires = computeExpiry(sess, resolved.Secrets.SessionTTL)
 
 	if err := credential.WriteJar(sess); err != nil {
 		return shared.FailHuman(err)
@@ -105,6 +82,36 @@ func doLogin(name string) error {
 		"session": status,
 	})
 	return nil
+}
+
+// assembleJar turns a successful login response into a fully-populated
+// Jar: cookies harvested from Set-Cookie headers + cookiejar (in case of
+// redirects), optional bearer token extracted via dot-path, and the
+// computed expiry. Pure given the inputs — no FS, no print. Tests can
+// drive it with an httptest.ResponseRecorder.
+func assembleJar(name string, resolved *credential.Resolved, resp *http.Response, jar http.CookieJar, loginURL *url.URL) (*credential.Jar, error) {
+	sess := &credential.Jar{Name: name, Acquired: time.Now().UTC()}
+	sess.HarvestResponse(resp, loginURL)
+	mergeJarCookies(sess, jar, loginURL)
+
+	if resolved.Secrets.TokenPath != "" {
+		bodyBytes, _ := readCapped(resp.Body, 2*1024*1024)
+		token, err := extractJSONToken(bodyBytes, resolved.Secrets.TokenPath)
+		if err != nil {
+			return nil, agenterrors.Wrap(err, agenterrors.FixableByHuman).
+				WithHint("Check --token-path matches the login response shape")
+		}
+		if token == "" {
+			return nil, agenterrors.Newf(agenterrors.FixableByHuman,
+				"login response had no value at --token-path %q", resolved.Secrets.TokenPath)
+		}
+		sess.Token = token
+		sess.TokenHeader = resolved.Secrets.Header
+		sess.TokenPrefix = resolved.Secrets.Prefix
+	}
+
+	sess.Expires = computeExpiry(sess, resolved.Secrets.SessionTTL)
+	return sess, nil
 }
 
 // validateLoginURL parses the credential's login-url and confirms it
@@ -219,74 +226,4 @@ func mergeJarCookies(sess *credential.Jar, jar http.CookieJar, loginURL *url.URL
 			Sensitive: credential.ClassifyCookie(c),
 		})
 	}
-}
-
-// readCapped reads up to max bytes from r, returning a possibly-truncated
-// slice. Errors (short of max bytes) are treated as end-of-input rather
-// than surfaced — login is best-effort about reading the body.
-func readCapped(r io.Reader, max int64) ([]byte, error) {
-	limited := io.LimitReader(r, max)
-	return io.ReadAll(limited)
-}
-
-// extractJSONToken walks a dot-separated path through a JSON body and
-// returns the string at that location. Supports numeric indexes in arrays
-// ("a.0.b"). Missing keys return "" (not an error). Non-JSON returns an
-// error so the human can fix the token-path / login-url.
-func extractJSONToken(body []byte, pathDot string) (string, error) {
-	var decoded any
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		return "", fmt.Errorf("login response is not JSON: %w", err)
-	}
-	for _, seg := range strings.Split(pathDot, ".") {
-		switch val := decoded.(type) {
-		case map[string]any:
-			decoded = val[seg]
-		case []any:
-			idx, err := strconv.Atoi(seg)
-			if err != nil || idx < 0 || idx >= len(val) {
-				return "", fmt.Errorf("index %q out of range", seg)
-			}
-			decoded = val[idx]
-		default:
-			return "", nil
-		}
-	}
-	switch v := decoded.(type) {
-	case string:
-		return v, nil
-	case float64:
-		return fmt.Sprint(v), nil
-	case nil:
-		return "", nil
-	default:
-		return "", fmt.Errorf("value at %q is %T, not string", pathDot, decoded)
-	}
-}
-
-// computeExpiry picks the tightest expiry bound from (ttlStr, the latest
-// per-cookie expiry, a 24h fallback). A session never outlives its
-// cookies or the TTL the human set.
-func computeExpiry(s *credential.Jar, ttlStr string) time.Time {
-	now := time.Now().UTC()
-	const defaultTTL = 24 * time.Hour
-	earliest := now.Add(defaultTTL)
-	picked := false
-
-	if ttlStr != "" {
-		if d, err := time.ParseDuration(ttlStr); err == nil {
-			earliest = now.Add(d)
-			picked = true
-		}
-	}
-	for _, c := range s.Cookies {
-		if c.Expires.IsZero() {
-			continue
-		}
-		if !picked || c.Expires.Before(earliest) {
-			earliest = c.Expires
-			picked = true
-		}
-	}
-	return earliest
 }

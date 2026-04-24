@@ -2,9 +2,7 @@ package tpl
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -151,17 +149,7 @@ func writeOutput(name, expandedURL string, auth *credential.Resolved, resp *api.
 	if resp == nil {
 		return
 	}
-	f, _ := output.ParseFormat(formatStr)
-	switch f {
-	case output.FormatRaw:
-		_, _ = os.Stdout.Write(resp.Body)
-		return
-	case output.FormatText:
-		fmt.Printf("HTTP %d %s\n\n", resp.Status, resp.StatusText)
-		_, _ = os.Stdout.Write(resp.Body)
-		return
-	}
-	env := output.BuildHTTPEnvelope(output.EnvelopeIn{
+	output.RenderResponse(output.EnvelopeIn{
 		URL:         expandedURL,
 		Auth:        auth,
 		Status:      resp.Status,
@@ -170,7 +158,6 @@ func writeOutput(name, expandedURL string, auth *credential.Resolved, resp *api.
 		ContentType: resp.ContentType,
 		Body:        resp.Body,
 		Truncated:   resp.Truncated,
-	})
-	env["template"] = name
-	output.PrintJSON(env)
+	}, resp.Status, resp.StatusText, resp.Body, formatStr,
+		map[string]any{"template": name})
 }

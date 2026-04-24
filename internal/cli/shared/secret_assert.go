@@ -57,58 +57,24 @@ func BindSecretAssertFlags(cmd *cobra.Command, a *SecretAssert) {
 // the right values, this struct equals what's already stored (overwrite is
 // a no-op). If they supplied wrong values, the credential is overwritten
 // with garbage.
+//
+// Delegates the per-type validation to credential.BuildSecretsCore so the
+// add-time and escalate-time paths share one source of truth.
 func BuildSecretsForAssert(authType string, a *SecretAssert) (credential.Secrets, error) {
-	switch authType {
-	case credential.AuthBearer:
-		if a.Token == "" {
-			return credential.Secrets{}, agenterrors.New(
-				"--token is required to escalate a bearer credential", agenterrors.FixableByAgent)
-		}
-		return credential.Secrets{
-			Token:  a.Token,
-			Header: a.TokenHeader,
-			Prefix: a.TokenPrefix,
-		}, nil
-	case credential.AuthBasic:
-		if a.Username == "" || a.Password == "" {
-			return credential.Secrets{}, agenterrors.New(
-				"--username and --password are required to escalate a basic credential", agenterrors.FixableByAgent)
-		}
-		return credential.Secrets{Username: a.Username, Password: a.Password}, nil
-	case credential.AuthCookie:
-		if a.Cookie == "" {
-			return credential.Secrets{}, agenterrors.New(
-				"--cookie is required to escalate a cookie credential", agenterrors.FixableByAgent)
-		}
-		return credential.Secrets{Cookie: a.Cookie}, nil
-	case credential.AuthCustom:
-		if len(a.CustomHeaders) == 0 {
-			return credential.Secrets{}, agenterrors.New(
-				"--custom-header is required to escalate a custom credential", agenterrors.FixableByAgent)
-		}
-		headers := map[string]string{}
-		for _, h := range a.CustomHeaders {
-			k, v, ok := SplitHeader(h)
-			if !ok {
-				return credential.Secrets{}, agenterrors.Newf(agenterrors.FixableByAgent,
-					"malformed --custom-header %q", h)
-			}
-			headers[k] = v
-		}
-		return credential.Secrets{Headers: headers}, nil
-	case credential.AuthForm:
-		// Form needs username+password (the inputs to the login flow);
-		// the rest of the form-credential fields (login URL, token path,
-		// etc.) are kept as-is — escalation only re-asserts the secret.
-		if a.Username == "" || a.Password == "" {
-			return credential.Secrets{}, agenterrors.New(
-				"--username and --password are required to escalate a form credential", agenterrors.FixableByAgent)
-		}
-		return credential.Secrets{Username: a.Username, Password: a.Password}, nil
-	default:
+	s, err := credential.BuildSecretsCore(authType, credential.SecretInputs{
+		Token:         a.Token,
+		TokenHeader:   a.TokenHeader,
+		TokenPrefix:   a.TokenPrefix,
+		Username:      a.Username,
+		Password:      a.Password,
+		Cookie:        a.Cookie,
+		CustomHeaders: a.CustomHeaders,
+	})
+	if err != nil {
 		return credential.Secrets{}, agenterrors.Newf(agenterrors.FixableByAgent,
-			"unknown auth type %q; cannot escalate", authType)
+			"%s to escalate a %s credential", err.Error(), authType)
 	}
+	return s, nil
 }
 
 // EscalateOverwrite re-asserts the primary secret of an existing credential

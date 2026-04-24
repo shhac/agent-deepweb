@@ -80,9 +80,9 @@ func registerShow(parent *cobra.Command) {
 		Short: "Show profile metadata (no secret values)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := credential.GetMetadata(args[0])
+			c, err := shared.LoadProfileMetadata(args[0])
 			if err != nil {
-				return shared.Fail(credential.ClassifyLookupErr(err, args[0]))
+				return shared.Fail(err)
 			}
 			output.PrintJSON(c)
 			return nil

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
@@ -36,13 +35,13 @@ func buildBody(o *opts) (io.Reader, string, error) {
 
 	switch {
 	case hasData:
-		b, err := loadBody(o.data)
+		b, err := shared.LoadInlineSpec(o.data)
 		if err != nil {
 			return nil, "", err
 		}
 		return bytes.NewReader(b), "", nil
 	case hasJSON:
-		b, err := loadBody(o.jsonBody)
+		b, err := shared.LoadInlineSpec(o.jsonBody)
 		if err != nil {
 			return nil, "", err
 		}
@@ -67,20 +66,3 @@ func buildBody(o *opts) (io.Reader, string, error) {
 	return nil, "", nil
 }
 
-// loadBody interprets "@-" as stdin, "@path" as file contents, else
-// returns the spec as a literal string.
-func loadBody(spec string) ([]byte, error) {
-	switch {
-	case spec == "@-":
-		return io.ReadAll(os.Stdin)
-	case strings.HasPrefix(spec, "@"):
-		data, err := os.ReadFile(spec[1:])
-		if err != nil {
-			return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent).
-				WithHint("Check the path and ensure the file is readable")
-		}
-		return data, nil
-	default:
-		return []byte(spec), nil
-	}
-}

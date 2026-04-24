@@ -1,11 +1,13 @@
 package shared
 
 import (
+	"io"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/shhac/agent-deepweb/internal/config"
+	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
 )
@@ -86,6 +88,51 @@ func SplitKV(s, flagLabel string) (k, v string, err error) {
 			"malformed %s %q (expected key=value)", flagLabel, s)
 	}
 	return key, val, nil
+}
+
+// LoadInlineSpec interprets a flag value as one of: "@-" (stdin), "@path"
+// (file), else literal bytes. Errors are fixable_by:agent with a path hint.
+// Used by --data, --json, --query, --variables — anywhere a small payload
+// can come from a string, a file, or stdin.
+func LoadInlineSpec(spec string) ([]byte, error) {
+	switch {
+	case spec == "@-":
+		return io.ReadAll(os.Stdin)
+	case strings.HasPrefix(spec, "@"):
+		data, err := os.ReadFile(spec[1:])
+		if err != nil {
+			return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent).
+				WithHint("Check the path and ensure the file is readable")
+		}
+		return data, nil
+	default:
+		return []byte(spec), nil
+	}
+}
+
+// LoadProfileMetadata looks up the named profile's metadata (no secrets).
+// Returns a classified fixable_by error on lookup failure so the caller
+// can `return shared.Fail(err)` directly. Collapses the common idiom
+//
+//	c, err := credential.GetMetadata(name)
+//	if err != nil { return shared.Fail(credential.ClassifyLookupErr(err, name)) }
+func LoadProfileMetadata(name string) (*credential.Credential, error) {
+	c, err := credential.GetMetadata(name)
+	if err != nil {
+		return nil, credential.ClassifyLookupErr(err, name)
+	}
+	return c, nil
+}
+
+// LoadProfileResolved is LoadProfileMetadata plus secret resolution.
+// Used by commands that need to send a request with the profile's
+// credentials attached (e.g. `profile test`, form login).
+func LoadProfileResolved(name string) (*credential.Resolved, error) {
+	r, err := credential.Resolve(name)
+	if err != nil {
+		return nil, credential.ClassifyLookupErr(err, name)
+	}
+	return r, nil
 }
 
 // ResolveLimits applies the precedence chain for request timeout and max
