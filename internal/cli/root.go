@@ -8,6 +8,7 @@ import (
 	configcli "github.com/shhac/agent-deepweb/internal/cli/config"
 	"github.com/shhac/agent-deepweb/internal/cli/fetch"
 	"github.com/shhac/agent-deepweb/internal/cli/graphql"
+	"github.com/shhac/agent-deepweb/internal/cli/jsonrpc"
 	"github.com/shhac/agent-deepweb/internal/cli/login"
 	"github.com/shhac/agent-deepweb/internal/cli/profile"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
@@ -52,6 +53,7 @@ func newRootCmd(version string) *cobra.Command {
 	registerUsageCommand(root)
 	fetch.Register(root, allGlobals)
 	graphql.Register(root, allGlobals)
+	jsonrpc.Register(root, allGlobals)
 	profile.Register(root, allGlobals)
 	login.Register(root, allGlobals)
 	audit.Register(root, allGlobals)

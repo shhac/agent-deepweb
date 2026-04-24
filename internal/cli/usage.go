@@ -45,6 +45,10 @@ COMMON WORKFLOWS
       --profile myapi \
       --query 'query { me { id name } }'
 
+  Send a JSON-RPC 2.0 call:
+    jsonrpc https://rpc.example.com --profile myrpc \
+      --method getThing --params '["arg"]'
+
   POST JSON:
     fetch https://api.example.com/v1/items --profile myapi \
       --method POST --json '{"name":"x"}'
@@ -94,6 +98,7 @@ SECRET-SAFETY RULES
 PER-VERB REFERENCE (run these for detailed help)
   fetch llm-help                     fetch command reference
   graphql llm-help                   graphql command reference
+  jsonrpc llm-help                   jsonrpc command reference
   template llm-help                  template commands reference
   profile llm-help                   profile commands reference
   login llm-help                     login / jar commands reference
