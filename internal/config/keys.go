@@ -9,25 +9,162 @@ import (
 )
 
 // KeyDef describes one user-settable config key: its dot-notated name,
-// its scalar kind, a one-line description for `config list-keys`, and
-// a hint of the built-in default for the help text.
+// its scalar kind, a one-line description, a display-only hint of the
+// built-in default, and three closures that get/set/unset the key on a
+// *Config. Centralising the per-key logic here means Get/Set/Unset at
+// the top of the file become one-line map lookups — adding a new key
+// is one struct literal, no drift risk across three parallel switches.
 type KeyDef struct {
 	Name        string
 	Kind        string // "int" | "int64" | "string" | "bool" | "duration"
 	Description string
-	Default     string // display-only; the actual default comes from the package-level constants
+	Default     string // display-only; actual default comes from package-level constants
+
+	// get returns the current value (as a display string) plus a source
+	// tag ("config" when explicitly set, "default" otherwise).
+	get func(*Config) (value, source string)
+	// set validates value and mutates cfg. Returns a parse error (with
+	// key-name prefix) on malformed input.
+	set func(*Config, string) error
+	// unset reverts the key to its built-in default by writing the zero
+	// value (for scalars; applyDefaults re-inflates on next Read) or
+	// clearing the pointer (for *bool keys).
+	unset func(*Config)
 }
 
-// Keys is the canonical list of user-settable keys. Also the source of
-// truth for which names `config set/get/unset` accept.
+// Keys is the canonical list of user-settable keys. Each entry owns
+// its type-specific get/set/unset logic. Get/Set/Unset at the top of
+// the file dispatch via keyByName.
 var Keys = []KeyDef{
-	{"default.timeout-ms", "int", "Default request timeout in milliseconds", fmt.Sprint(DefaultTimeoutMS)},
-	{"default.max-bytes", "int64", "Default response body size cap (bytes)", fmt.Sprint(DefaultMaxBytes)},
-	{"default.user-agent", "string", "Fallback User-Agent (lowest precedence; profile/per-request can override)", ""},
-	{"default.profile", "string", "Fallback profile name when --profile is omitted", ""},
-	{"audit.enabled", "bool", "Write the audit log for every request", fmt.Sprint(DefaultAudit)},
-	{"track.ttl", "duration", "How long tracked records live before being eligible for prune", DefaultTrackTTL},
+	{
+		Name:        "default.timeout-ms",
+		Kind:        "int",
+		Description: "Default request timeout in milliseconds",
+		Default:     fmt.Sprint(DefaultTimeoutMS),
+		get: func(c *Config) (string, string) {
+			if c.Defaults.TimeoutMS == DefaultTimeoutMS {
+				return fmt.Sprint(DefaultTimeoutMS), "default"
+			}
+			return fmt.Sprint(c.Defaults.TimeoutMS), "config"
+		},
+		set: func(c *Config, v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return errors.New("must be an integer number of milliseconds")
+			}
+			if n <= 0 {
+				return errors.New("must be > 0")
+			}
+			c.Defaults.TimeoutMS = n
+			return nil
+		},
+		unset: func(c *Config) { c.Defaults.TimeoutMS = 0 },
+	},
+	{
+		Name:        "default.max-bytes",
+		Kind:        "int64",
+		Description: "Default response body size cap (bytes)",
+		Default:     fmt.Sprint(DefaultMaxBytes),
+		get: func(c *Config) (string, string) {
+			if c.Defaults.MaxBytes == DefaultMaxBytes {
+				return fmt.Sprint(DefaultMaxBytes), "default"
+			}
+			return fmt.Sprint(c.Defaults.MaxBytes), "config"
+		},
+		set: func(c *Config, v string) error {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return errors.New("must be an integer byte count")
+			}
+			if n <= 0 {
+				return errors.New("must be > 0")
+			}
+			c.Defaults.MaxBytes = n
+			return nil
+		},
+		unset: func(c *Config) { c.Defaults.MaxBytes = 0 },
+	},
+	{
+		Name:        "default.user-agent",
+		Kind:        "string",
+		Description: "Fallback User-Agent (lowest precedence; profile/per-request can override)",
+		Default:     "",
+		get: func(c *Config) (string, string) {
+			if c.Defaults.UserAgent == "" {
+				return "", "default"
+			}
+			return c.Defaults.UserAgent, "config"
+		},
+		set:   func(c *Config, v string) error { c.Defaults.UserAgent = v; return nil },
+		unset: func(c *Config) { c.Defaults.UserAgent = "" },
+	},
+	{
+		Name:        "default.profile",
+		Kind:        "string",
+		Description: "Fallback profile name when --profile is omitted",
+		Default:     "",
+		get: func(c *Config) (string, string) {
+			if c.Defaults.Profile == "" {
+				return "", "default"
+			}
+			return c.Defaults.Profile, "config"
+		},
+		set:   func(c *Config, v string) error { c.Defaults.Profile = v; return nil },
+		unset: func(c *Config) { c.Defaults.Profile = "" },
+	},
+	{
+		Name:        "audit.enabled",
+		Kind:        "bool",
+		Description: "Write the audit log for every request",
+		Default:     fmt.Sprint(DefaultAudit),
+		get: func(c *Config) (string, string) {
+			if c.Audit.Enabled == nil {
+				return fmt.Sprint(DefaultAudit), "default"
+			}
+			return fmt.Sprint(*c.Audit.Enabled), "config"
+		},
+		set: func(c *Config, v string) error {
+			b, err := parseBool(v)
+			if err != nil {
+				return err
+			}
+			c.Audit.Enabled = &b
+			return nil
+		},
+		unset: func(c *Config) { c.Audit.Enabled = nil },
+	},
+	{
+		Name:        "track.ttl",
+		Kind:        "duration",
+		Description: "How long tracked records live before being eligible for prune",
+		Default:     DefaultTrackTTL,
+		get: func(c *Config) (string, string) {
+			if c.Track.TTL == DefaultTrackTTL {
+				return DefaultTrackTTL, "default"
+			}
+			return c.Track.TTL, "config"
+		},
+		set: func(c *Config, v string) error {
+			if _, err := time.ParseDuration(v); err != nil {
+				return errors.New("must be a Go duration (e.g. '24h', '168h')")
+			}
+			c.Track.TTL = v
+			return nil
+		},
+		unset: func(c *Config) { c.Track.TTL = "" },
+	},
 }
+
+// keyByName is the dispatch table used by Get/Set/Unset. Built lazily
+// the first time one of them is called; cheap to rebuild but simpler
+// than thread-safe init tracking.
+var keyByName = func() map[string]*KeyDef {
+	m := make(map[string]*KeyDef, len(Keys))
+	for i := range Keys {
+		m[Keys[i].Name] = &Keys[i]
+	}
+	return m
+}()
 
 // ErrUnknownKey is returned for any key not in Keys. Callers surface as
 // fixable_by:agent so the human sees the exact valid set.
@@ -35,122 +172,48 @@ var ErrUnknownKey = errors.New("unknown config key")
 
 // KnownKey reports whether name is in Keys.
 func KnownKey(name string) bool {
-	for _, k := range Keys {
-		if k.Name == name {
-			return true
-		}
-	}
-	return false
+	_, ok := keyByName[name]
+	return ok
 }
 
-// Get returns the current in-memory value for a key as a display string
-// ("" for unset-string, "true"/"false" for bool, etc.), plus a source
-// tag ("config" when explicitly set, "default" otherwise).
+// Get returns the current in-memory value for a key as a display
+// string, plus a source tag ("config" when explicitly set, "default"
+// otherwise).
 func Get(cfg *Config, name string) (string, string, error) {
-	switch name {
-	case "default.timeout-ms":
-		if cfg.Defaults.TimeoutMS == DefaultTimeoutMS {
-			return fmt.Sprint(DefaultTimeoutMS), "default", nil
-		}
-		return fmt.Sprint(cfg.Defaults.TimeoutMS), "config", nil
-	case "default.max-bytes":
-		if cfg.Defaults.MaxBytes == DefaultMaxBytes {
-			return fmt.Sprint(DefaultMaxBytes), "default", nil
-		}
-		return fmt.Sprint(cfg.Defaults.MaxBytes), "config", nil
-	case "default.user-agent":
-		if cfg.Defaults.UserAgent == "" {
-			return "", "default", nil
-		}
-		return cfg.Defaults.UserAgent, "config", nil
-	case "default.profile":
-		if cfg.Defaults.Profile == "" {
-			return "", "default", nil
-		}
-		return cfg.Defaults.Profile, "config", nil
-	case "audit.enabled":
-		if cfg.Audit.Enabled == nil {
-			return fmt.Sprint(DefaultAudit), "default", nil
-		}
-		return fmt.Sprint(*cfg.Audit.Enabled), "config", nil
-	case "track.ttl":
-		if cfg.Track.TTL == DefaultTrackTTL {
-			return DefaultTrackTTL, "default", nil
-		}
-		return cfg.Track.TTL, "config", nil
-	default:
+	def, ok := keyByName[name]
+	if !ok {
 		return "", "", ErrUnknownKey
 	}
+	v, src := def.get(cfg)
+	return v, src, nil
 }
 
-// Set mutates cfg in-place with the parsed value for name. Returns a
-// parse error (with key-name context) on malformed input.
+// Set mutates cfg in-place with the parsed value for name. The returned
+// error (on malformed input) is prefixed with the key name so the CLI
+// layer can surface it verbatim.
 func Set(cfg *Config, name, value string) error {
-	switch name {
-	case "default.timeout-ms":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("%s: must be an integer number of milliseconds", name)
-		}
-		if v <= 0 {
-			return fmt.Errorf("%s: must be > 0", name)
-		}
-		cfg.Defaults.TimeoutMS = v
-	case "default.max-bytes":
-		v, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return fmt.Errorf("%s: must be an integer byte count", name)
-		}
-		if v <= 0 {
-			return fmt.Errorf("%s: must be > 0", name)
-		}
-		cfg.Defaults.MaxBytes = v
-	case "default.user-agent":
-		cfg.Defaults.UserAgent = value
-	case "default.profile":
-		cfg.Defaults.Profile = value
-	case "audit.enabled":
-		v, err := parseBool(value)
-		if err != nil {
-			return fmt.Errorf("%s: %s", name, err.Error())
-		}
-		cfg.Audit.Enabled = &v
-	case "track.ttl":
-		if _, err := time.ParseDuration(value); err != nil {
-			return fmt.Errorf("%s: must be a Go duration (e.g. '24h', '168h')", name)
-		}
-		cfg.Track.TTL = value
-	default:
+	def, ok := keyByName[name]
+	if !ok {
 		return ErrUnknownKey
+	}
+	if err := def.set(cfg, value); err != nil {
+		return fmt.Errorf("%s: %s", name, err.Error())
 	}
 	return nil
 }
 
-// Unset reverts a key to its built-in default by clearing the stored
-// value (for pointer-typed keys) or writing the zero value (for scalar
-// types — applyDefaults re-inflates it on Read).
+// Unset reverts a key to its built-in default.
 func Unset(cfg *Config, name string) error {
-	switch name {
-	case "default.timeout-ms":
-		cfg.Defaults.TimeoutMS = 0
-	case "default.max-bytes":
-		cfg.Defaults.MaxBytes = 0
-	case "default.user-agent":
-		cfg.Defaults.UserAgent = ""
-	case "default.profile":
-		cfg.Defaults.Profile = ""
-	case "audit.enabled":
-		cfg.Audit.Enabled = nil
-	case "track.ttl":
-		cfg.Track.TTL = ""
-	default:
+	def, ok := keyByName[name]
+	if !ok {
 		return ErrUnknownKey
 	}
+	def.unset(cfg)
 	return nil
 }
 
-// TrackTTL returns the configured duration for tracked-record retention,
-// or the built-in default on parse failure.
+// TrackTTL returns the configured duration for tracked-record
+// retention, or the built-in default on parse failure / zero / negative.
 func (c *Config) TrackTTL() time.Duration {
 	if c.Track.TTL == "" {
 		d, _ := time.ParseDuration(DefaultTrackTTL)

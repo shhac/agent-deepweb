@@ -15,6 +15,17 @@ import (
 // `disallow` and `disallow-path` shrink the allowlist. Shrinking is not
 // escalation, so they don't require the primary secret.
 
+// loadForMutation centralises the load-then-maybe-assert pattern used
+// by allow/disallow and allow-path/disallow-path. When requireAssert is
+// true the caller is a widening mutation and the passphrase is checked;
+// false skips it (disallow/disallow-path narrowing).
+func loadForMutation(name string, requireAssert bool, assert *shared.PassphraseAssert) (*credential.Credential, error) {
+	if requireAssert {
+		return shared.LoadAndAssert(name, assert)
+	}
+	return shared.LoadProfileMetadata(name)
+}
+
 func registerAllow(parent *cobra.Command) {
 	a := &shared.PassphraseAssert{}
 	cmd := &cobra.Command{
@@ -91,14 +102,9 @@ func mutateSlice(existing []string, item string, add bool) (updated []string, no
 // secret, which is re-applied via escalateOverwrite. When add=false,
 // `assert` is ignored.
 func mutateDomains(name, domain string, add bool, assert *shared.PassphraseAssert) error {
-	c, err := shared.LoadProfileMetadata(name)
+	c, err := loadForMutation(name, add, assert)
 	if err != nil {
 		return shared.Fail(err)
-	}
-	if add {
-		if err := shared.ApplyPassphraseAssert(c.Name, assert); err != nil {
-			return shared.Fail(err)
-		}
 	}
 	updated, noop := mutateSlice(c.Domains, domain, add)
 	if noop {
@@ -113,14 +119,9 @@ func mutateDomains(name, domain string, add bool, assert *shared.PassphraseAsser
 }
 
 func mutatePaths(name, pattern string, add bool, assert *shared.PassphraseAssert) error {
-	c, err := shared.LoadProfileMetadata(name)
+	c, err := loadForMutation(name, add, assert)
 	if err != nil {
 		return shared.Fail(err)
-	}
-	if add {
-		if err := shared.ApplyPassphraseAssert(c.Name, assert); err != nil {
-			return shared.Fail(err)
-		}
 	}
 	updated, noop := mutateSlice(c.Paths, pattern, add)
 	if noop {

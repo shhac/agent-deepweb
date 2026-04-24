@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
 )
 
@@ -117,4 +118,56 @@ func TestRedactHeaders_PerProfileOverrides(t *testing.T) {
 	if out.Get("X-Correlation-ID") != "visible-by-default" {
 		t.Errorf("Unrelated header should be untouched: got %q", out.Get("X-Correlation-ID"))
 	}
+}
+
+// TestRedactSecretEcho_MasksJarTokenAndSensitiveCookies covers the
+// jar-sourced needles added in v2: form-auth bearer token + any
+// jar cookie flagged Sensitive. A regression here means a live
+// session token can echo verbatim in response bodies.
+func TestRedactSecretEcho_MasksJarTokenAndSensitiveCookies(t *testing.T) {
+	dir := t.TempDir()
+	setConfigDir(t, dir)
+
+	// Register a form profile — the only type whose jar carries a
+	// separate Token field.
+	if _, err := credential.Store(
+		credential.Credential{Name: "p", Type: credential.AuthForm, Domains: []string{"a.example.com"}},
+		credential.Secrets{Username: "u", Password: "pw"},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := credential.WriteJar(&credential.Jar{
+		Name:  "p",
+		Token: "jar-session-token-long",
+		Cookies: []credential.PersistedCookie{
+			{Name: "sid", Value: "sid-value-looong", Sensitive: true},
+			{Name: "theme", Value: "dark-theme-value", Sensitive: false},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resolved, _ := credential.Resolve("p")
+
+	body := []byte(`echo: jar-session-token-long AND sid-value-looong AND dark-theme-value`)
+	masked := RedactSecretEcho(body, resolved)
+
+	if bytes.Contains(masked, []byte("jar-session-token-long")) {
+		t.Errorf("jar token should be redacted: %s", masked)
+	}
+	if bytes.Contains(masked, []byte("sid-value-looong")) {
+		t.Errorf("sensitive cookie value should be redacted: %s", masked)
+	}
+	// Non-sensitive cookie must NOT be redacted.
+	if !bytes.Contains(masked, []byte("dark-theme-value")) {
+		t.Errorf("visible cookie value should have been preserved: %s", masked)
+	}
+}
+
+// setConfigDir is a local helper — the api test package can't rely on
+// the one in do_test.go since it's in the same package but uses a
+// different name. Keeps this test file self-contained.
+func setConfigDir(t *testing.T, dir string) {
+	t.Helper()
+	config.SetConfigDir(dir)
+	t.Cleanup(func() { config.SetConfigDir(""); config.ClearCache() })
 }

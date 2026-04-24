@@ -26,7 +26,7 @@ func registerMarkHeader(parent *cobra.Command) {
 		Short: "Force one or more headers to be redacted in envelope/track (narrowing, no passphrase)",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutateHeaderList(args[0], args[1:], true, false, nil)
+			return markHeaderSensitive(args[0], args[1:])
 		},
 	})
 	auth := &shared.PassphraseAssert{}
@@ -35,28 +35,48 @@ func registerMarkHeader(parent *cobra.Command) {
 		Short: "Force one or more headers to be shown in envelope/track (widening; requires --passphrase)",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return mutateHeaderList(args[0], args[1:], false, true, auth)
+			return markHeaderVisible(args[0], args[1:], auth)
 		},
 	}
 	shared.BindPassphraseAssertFlags(visibleCmd, auth)
 	parent.AddCommand(visibleCmd)
 }
 
-// mutateHeaderList adds to the profile's SensitiveHeaders or
-// VisibleHeaders list (setting one also removes the name from the
-// OTHER list, since a header can't simultaneously be forced sensitive
-// and forced visible).
-func mutateHeaderList(name string, headers []string, addToSensitive, addToVisible bool, assert *shared.PassphraseAssert) error {
+// markHeaderSensitive adds headers to the force-redact list. Narrowing
+// → no passphrase check.
+func markHeaderSensitive(name string, headers []string) error {
 	c, err := shared.LoadProfileMetadata(name)
 	if err != nil {
 		return shared.Fail(err)
 	}
-	if assert != nil {
-		if err := shared.ApplyPassphraseAssert(name, assert); err != nil {
-			return shared.Fail(err)
-		}
-	}
+	return applyHeaderMembership(c, headers, markToSensitive)
+}
 
+// markHeaderVisible adds headers to the force-show list. Widening —
+// passphrase required; the verify runs before any mutation.
+func markHeaderVisible(name string, headers []string, assert *shared.PassphraseAssert) error {
+	c, err := shared.LoadAndAssert(name, assert)
+	if err != nil {
+		return shared.Fail(err)
+	}
+	return applyHeaderMembership(c, headers, markToVisible)
+}
+
+// headerTarget is a 2-state enum for which override list gains the
+// named headers. Replaces the earlier (addToSensitive, addToVisible)
+// bool pair that made invalid states (both-true / both-false)
+// representable.
+type headerTarget int
+
+const (
+	markToSensitive headerTarget = iota
+	markToVisible
+)
+
+// applyHeaderMembership mutates the profile's sensitive/visible header
+// sets, moving each named header to the target list and removing it
+// from the other (a header can't be forced sensitive AND visible).
+func applyHeaderMembership(c *credential.Credential, headers []string, target headerTarget) error {
 	sens := normalisedSet(c.SensitiveHeaders)
 	vis := normalisedSet(c.VisibleHeaders)
 	for _, h := range headers {
@@ -64,23 +84,23 @@ func mutateHeaderList(name string, headers []string, addToSensitive, addToVisibl
 		if low == "" {
 			continue
 		}
-		if addToSensitive {
+		switch target {
+		case markToSensitive:
 			sens[low] = h
 			delete(vis, low)
-		}
-		if addToVisible {
+		case markToVisible:
 			vis[low] = h
 			delete(sens, low)
 		}
 	}
-	if err := credential.SetSensitiveHeaders(name, mapValues(sens)); err != nil {
+	if err := credential.SetSensitiveHeaders(c.Name, mapValues(sens)); err != nil {
 		return shared.FailHuman(err)
 	}
-	if err := credential.SetVisibleHeaders(name, mapValues(vis)); err != nil {
+	if err := credential.SetVisibleHeaders(c.Name, mapValues(vis)); err != nil {
 		return shared.FailHuman(err)
 	}
 	shared.PrintOK(map[string]any{
-		"name":              name,
+		"name":              c.Name,
 		"sensitive_headers": mapValues(sens),
 		"visible_headers":   mapValues(vis),
 	})

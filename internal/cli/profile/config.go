@@ -47,11 +47,8 @@ func registerSetDefaultHeader(parent *cobra.Command) {
 			if !ok {
 				return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent, "malformed header %q", args[1]))
 			}
-			c, err := shared.LoadProfileMetadata(args[0])
+			c, err := shared.LoadAndAssert(args[0], a)
 			if err != nil {
-				return shared.Fail(err)
-			}
-			if err := shared.ApplyPassphraseAssert(c.Name, a); err != nil {
 				return shared.Fail(err)
 			}
 			if c.DefaultHeaders == nil {
@@ -98,11 +95,7 @@ func registerSetAllowHTTP(parent *cobra.Command) {
 		Short: "Permit http:// for this credential (re-supply credential's primary secret)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := shared.LoadProfileMetadata(args[0])
-			if err != nil {
-				return shared.Fail(err)
-			}
-			if err := shared.ApplyPassphraseAssert(c.Name, a); err != nil {
+			if _, err := shared.LoadAndAssert(args[0], a); err != nil {
 				return shared.Fail(err)
 			}
 			v := strings.ToLower(args[1])

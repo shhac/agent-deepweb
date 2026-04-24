@@ -180,29 +180,6 @@ func pruneWhere(should func(*Record) bool) (int, error) {
 // matches name. Called by `profile remove` so a deleted profile
 // doesn't leave orphaned track data behind.
 func PruneByProfile(name string) (int, error) {
-	entries, err := os.ReadDir(trackDir())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	removed := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		id := strings.TrimSuffix(e.Name(), ".json")
-		r, err := Read(id)
-		if err != nil {
-			continue
-		}
-		if r.Profile == name {
-			if err := os.Remove(recordPath(id)); err == nil {
-				removed++
-			}
-		}
-	}
-	return removed, nil
+	return pruneWhere(func(r *Record) bool { return r.Profile == name })
 }
 

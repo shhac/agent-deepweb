@@ -47,11 +47,8 @@ func registerSetSecret(parent *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			c, err := shared.LoadProfileMetadata(name)
+			c, err := shared.LoadAndAssert(name, auth)
 			if err != nil {
-				return shared.Fail(err)
-			}
-			if err := shared.ApplyPassphraseAssert(name, auth); err != nil {
 				return shared.Fail(err)
 			}
 

@@ -30,6 +30,24 @@ func BindPassphraseAssertFlags(cmd *cobra.Command, a *PassphraseAssert) {
 		"Profile's passphrase (set at 'profile add'; defaults to the primary secret if --passphrase wasn't used at add time)")
 }
 
+// LoadAndAssert is the canonical preamble for every escalation command:
+// load the profile's metadata then verify the supplied passphrase.
+// Collapses ~6 lines of load+error-check+assert+error-check boilerplate
+// at every call site.
+//
+// On lookup or mismatch, the error is already classified — callers can
+// `return shared.Fail(err)` directly without wrapping.
+func LoadAndAssert(name string, a *PassphraseAssert) (*credential.Credential, error) {
+	c, err := LoadProfileMetadata(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := ApplyPassphraseAssert(c.Name, a); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
 // ApplyPassphraseAssert verifies the supplied passphrase against the
 // stored one for the named profile. Returns a classified error on
 // missing flag or mismatch; the caller should propagate via shared.Fail

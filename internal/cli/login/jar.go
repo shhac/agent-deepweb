@@ -122,11 +122,7 @@ func markSensitivity(sensitive bool, assert *shared.PassphraseAssert) func(*cobr
 		name := args[0]
 		cookies := args[1:]
 		if assert != nil {
-			c, err := shared.LoadProfileMetadata(name)
-			if err != nil {
-				return shared.Fail(err)
-			}
-			if err := shared.ApplyPassphraseAssert(c.Name, assert); err != nil {
+			if _, err := shared.LoadAndAssert(name, assert); err != nil {
 				return shared.Fail(err)
 			}
 		}

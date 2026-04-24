@@ -33,8 +33,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := auditpkg.Tail(nLines)
 			if err != nil {
-				output.WriteError(os.Stderr, agenterrors.Wrap(err, agenterrors.FixableByHuman))
-				return err
+				return shared.FailHuman(err)
 			}
 			output.PrintJSON(map[string]any{
 				"enabled": auditpkg.Enabled(),
@@ -53,8 +52,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 			// Tail of 1000 is a reasonable default to summarise over
 			entries, err := auditpkg.Tail(1000)
 			if err != nil {
-				output.WriteError(os.Stderr, agenterrors.Wrap(err, agenterrors.FixableByHuman))
-				return err
+				return shared.FailHuman(err)
 			}
 			output.PrintJSON(auditpkg.Summarize(entries))
 			return nil
@@ -80,36 +78,26 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	})
 
 	var (
-		pruneOlderThan string
+		pruneOlderThan  string
 		pruneOnlyTracks bool
 	)
 	pruneCmd := &cobra.Command{
 		Use:   "prune",
 		Short: "Remove expired tracked records (default: use each record's own ExpiresAt)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// --only-tracks is currently the default behaviour; the flag
-			// exists to make the target explicit and to leave room for
-			// future --only-log pruning of the audit JSONL.
-			_ = pruneOnlyTracks // accepted, no-op for now (always tracks)
-			var (
-				removed int
-				err     error
-			)
-			if pruneOlderThan != "" {
-				parsed, perr := time.ParseDuration(pruneOlderThan)
-				if perr != nil {
-					return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent,
-						"--older-than %q is not a valid duration (e.g. 24h, 168h)", pruneOlderThan))
-				}
-				removed, err = track.PruneOlderThan(parsed)
-			} else {
-				// Default: respect each record's own ExpiresAt so old
-				// records don't outlive their original contract just
-				// because the config TTL was bumped later.
-				removed, err = track.PruneExpired()
+			// Only target today is tracked records. The flag exists as a
+			// forward-compat hook for --only-log (audit.log pruning) and
+			// as documentation of the default. Refusing --only-tracks=false
+			// now means we can't silently change behaviour when the log
+			// target lands later.
+			if !pruneOnlyTracks {
+				return shared.Fail(agenterrors.New(
+					"--only-tracks=false is not supported yet (the audit log itself has no TTL today)",
+					agenterrors.FixableByAgent))
 			}
+			removed, err := runTrackPrune(pruneOlderThan)
 			if err != nil {
-				return shared.FailHuman(err)
+				return shared.Fail(err)
 			}
 			shared.PrintOK(map[string]any{"removed": removed})
 			return nil
@@ -120,6 +108,24 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	cmd.AddCommand(pruneCmd)
 
 	root.AddCommand(cmd)
+}
+
+// runTrackPrune dispatches to the right track-package pruner based on
+// --older-than. Parses the duration up front so the error (fixable_by:
+// agent, with the bad value quoted) is surfaced with minimal nesting.
+func runTrackPrune(olderThan string) (int, error) {
+	if olderThan != "" {
+		d, err := time.ParseDuration(olderThan)
+		if err != nil {
+			return 0, agenterrors.Newf(agenterrors.FixableByAgent,
+				"--older-than %q is not a valid duration (e.g. 24h, 168h)", olderThan)
+		}
+		return track.PruneOlderThan(d)
+	}
+	// Default: respect each record's own ExpiresAt so old records don't
+	// outlive their original contract just because the config TTL was
+	// bumped later.
+	return track.PruneExpired()
 }
 
 const usageText = `audit — inspect the request audit log + tracked records

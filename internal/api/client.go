@@ -6,13 +6,15 @@
 //
 // File layout:
 //
-//	client.go   Request, Response, ClientOptions, Do (orchestrator)
-//	jar.go      primeCookieJar / harvestJarCookies + helpers
+//	types.go    Request, Response, SentRequest, ClientOptions
+//	client.go   Do (orchestrator) + extracted pipeline helpers
+//	record.go   buildAuditEntry, buildTrackRecord, writeTrackRecord (pure)
+//	jar.go      primeCookieJar / harvestJarCookies
 //	request.go  buildHTTPRequest, resolveUserAgent, viewPersisted
 //	scheme.go   enforceScheme, isLoopback
 //	classify.go classifyTransport, classifyHTTP
 //	auth.go     ApplyAuth
-//	redact.go   Header/body/literal-value redactors
+//	redact.go   Header / JSON body / literal-byte echo redactors
 package api
 
 import (
@@ -25,119 +27,22 @@ import (
 	"time"
 
 	"github.com/shhac/agent-deepweb/internal/audit"
-	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
-	"github.com/shhac/agent-deepweb/internal/track"
 )
-
-// Version is the agent-deepweb build version used in the default User-Agent
-// header ("agent-deepweb/<version>"). Set by cmd/agent-deepweb from the
-// -ldflags variable.
-var Version = "dev"
-
-// Request is a high-level HTTP request description, translated into an
-// *http.Request inside Do. The Resolved credential (if any) is applied
-// after user headers so user-supplied headers cannot overwrite the auth.
-type Request struct {
-	Method  string
-	URL     string
-	Headers map[string]string
-	Query   map[string][]string
-	Body    io.Reader
-	Auth    *credential.Resolved
-	// JarPath, if set, overrides the profile's encrypted default jar with
-	// a plaintext bring-your-own jar at this path. Used by `--cookiejar
-	// <path>`, including the `--profile none --cookiejar <path>` LLM-
-	// authored-flow case.
-	JarPath string
-	// UserAgent, if non-empty, overrides everything (credential's UA, env,
-	// and the default). Empty = fall through the precedence chain.
-	UserAgent string
-	// TemplateName is set by `tpl run` so the audit log can record which
-	// template produced the request. Empty for ad-hoc fetches.
-	TemplateName string
-	// Track, when true, tells Do to persist a full-fidelity record of
-	// the request+response (via internal/track) and to stamp an AuditID
-	// on the response so the caller can surface it in the envelope. The
-	// CLI layer wires this up via the `--track` flag.
-	Track bool
-}
-
-// Response is the redacted, size-capped response surfaced to the caller.
-type Response struct {
-	Status      int
-	StatusText  string
-	Headers     http.Header
-	ContentType string
-	Body        []byte
-	Truncated   bool
-	// NewCookies: cookies captured from Set-Cookie on this response that
-	// were *not* already in the profile's jar (post-harvest diff). Visible
-	// ones have values; sensitive ones are redacted. Empty when no profile
-	// is attached.
-	NewCookies []credential.CookieView `json:"new_cookies,omitempty"`
-	// Sent captures what went out on the wire, for envelope display and
-	// track-record persistence. Headers and body are redacted the same
-	// way the response side is (auth headers masked, body-field secrets
-	// masked, literal-value echoes masked).
-	Sent SentRequest
-	// AuditID is set when Request.Track was true. Empty otherwise.
-	// Callers include it in the response envelope so humans can look
-	// up the full record via `audit show <id>`.
-	AuditID string
-}
-
-// SentRequest is the post-redaction view of what was sent to the server.
-// Populated by Do so callers can display request info symmetrically with
-// response info. Body is redacted; BodyBytes is the raw (pre-redaction)
-// size so envelopes can show it without dumping possibly-binary payloads.
-type SentRequest struct {
-	Method     string
-	URL        string
-	Headers    http.Header
-	Body       []byte
-	BodyBytes  int
-	RequestCT  string // Content-Type header of the request
-}
-
-// ClientOptions carry request-level defaults that would otherwise pile up
-// as parameters to Do. Redaction is always on — there's no "no-redact"
-// escape hatch in v2; if a human really wants raw output they can use curl.
-type ClientOptions struct {
-	Timeout         time.Duration
-	MaxBytes        int64
-	FollowRedirects bool
-}
-
-func (c *ClientOptions) applyDefaults() {
-	if c.Timeout == 0 {
-		c.Timeout = time.Duration(config.DefaultTimeoutMS) * time.Millisecond
-	}
-	if c.MaxBytes == 0 {
-		c.MaxBytes = config.DefaultMaxBytes
-	}
-}
-
-// defaultStr returns d when s is empty. Small helper kept here because the
-// audit defer in Do is the only caller.
-func defaultStr(s, d string) string {
-	if s == "" {
-		return d
-	}
-	return s
-}
 
 // Do executes the request and returns a redacted, size-capped response.
 // Errors are pre-classified as APIError with a fixable_by hint. Every
 // completed or failed request is audited via internal/audit.
 //
 // The top-level shape:
-//  1. parse URL, enforce scheme policy
-//  2. prime a cookiejar (fresh, or seeded from session for form auth)
-//  3. build http.Request (headers, auth, UA)
-//  4. execute → read capped body → harvest cookies → redact → classify
-//  5. (always) write one audit entry with the outcome
+//  1. parse URL, buffer request body, enforce scheme, prime cookiejar
+//  2. build http.Request (headers, auth, UA), construct client
+//  3. execute → read capped response body → harvest cookies → redact
+//  4. assemble Response (including the redacted SentRequest view)
+//  5. optionally persist a full-fidelity track record
+//  6. classify HTTP-level errors and truncation
+//  7. (always, via deferred) write one audit entry with the outcome
 func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, outErr error) {
 	opts.applyDefaults()
 	started := time.Now()
@@ -153,20 +58,9 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 			WithHint("Use scheme://host/path form")
 	}
 
-	// Buffer the request body so we can both send it AND record it for
-	// envelope/track display. Skip if Body is nil (GET, etc.). Cap at
-	// MaxBytes so a giant upload doesn't blow memory.
-	var sentBody []byte
-	if req.Body != nil {
-		buf, _, readErr := readCappedBody(req.Body, opts.MaxBytes)
-		if readErr != nil {
-			return nil, agenterrors.Wrap(readErr, agenterrors.FixableByAgent)
-		}
-		// Over-cap on the outbound side means the body itself wouldn't
-		// fit under --max-size, which is a caller bug; we surface the
-		// truncation via BodyBytes below rather than erroring here.
-		sentBody = buf
-		req.Body = bytes.NewReader(sentBody)
+	sentBody, err := bufferRequestBody(&req, opts.MaxBytes)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := enforceScheme(parsedURL, req.Auth); err != nil {
@@ -201,37 +95,14 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 	}
 
 	newCookieViews := harvestJarCookies(req.Auth, req.JarPath, httpResp, parsedURL)
-
-	contentType := httpResp.Header.Get("Content-Type")
-	// Redaction is mandatory in v2 — the layered redactors run on every
-	// response, no opt-out flag. If a human really needs raw output, they
-	// can use curl.
-	headers := RedactHeaders(httpResp.Header, req.Auth)
-	body = RedactJSONBody(body, contentType)
-	body = RedactSecretEcho(body, req.Auth)
-
-	// Build the sent-request view: redact headers + body the same way the
-	// response side is redacted. The raw BodyBytes stays on the struct
-	// so the envelope can show a byte count instead of the full body
-	// (useful for binary uploads).
-	sentHeaders := RedactHeaders(httpReq.Header, req.Auth)
-	reqCT := httpReq.Header.Get("Content-Type")
-	redactedSentBody := RedactJSONBody(append([]byte(nil), sentBody...), reqCT)
-	redactedSentBody = RedactSecretEcho(redactedSentBody, req.Auth)
-	sent := SentRequest{
-		Method:    httpReq.Method,
-		URL:       httpReq.URL.String(),
-		Headers:   sentHeaders,
-		Body:      redactedSentBody,
-		BodyBytes: len(sentBody),
-		RequestCT: reqCT,
-	}
+	headers, body := redactResponse(httpResp.Header, body, req.Auth)
+	sent := buildSentRequest(httpReq, sentBody, req.Auth)
 
 	resp = &Response{
 		Status:      httpResp.StatusCode,
 		StatusText:  httpResp.Status,
 		Headers:     headers,
-		ContentType: contentType,
+		ContentType: httpResp.Header.Get("Content-Type"),
 		Body:        body,
 		Truncated:   truncated,
 		NewCookies:  newCookieViews,
@@ -250,6 +121,58 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 			WithHint("Retry with --max-size <bytes> or narrow the request (query params, pagination)")
 	}
 	return resp, nil
+}
+
+// bufferRequestBody reads req.Body into a cap-bounded byte slice and
+// replaces req.Body with a bytes.Reader so the buffered copy can be
+// both sent to the server AND recorded in the envelope/track. Returns
+// a nil slice unchanged when req.Body is nil (GET, etc.).
+func bufferRequestBody(req *Request, maxBytes int64) ([]byte, error) {
+	if req.Body == nil {
+		return nil, nil
+	}
+	buf, _, err := readCappedBody(req.Body, maxBytes)
+	if err != nil {
+		return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent)
+	}
+	// Over-cap on the outbound side means the body itself wouldn't fit
+	// under --max-size, which is a caller bug; we surface truncation via
+	// Sent.BodyBytes in the envelope rather than erroring here.
+	req.Body = bytes.NewReader(buf)
+	return buf, nil
+}
+
+// redactResponse runs the three-layer redaction pipeline on the
+// response headers + body. Extracted so request-side redaction
+// (buildSentRequest) can pair visually with it and so tests can
+// exercise the pipeline without httptest.
+func redactResponse(rawHeaders http.Header, body []byte, auth *credential.Resolved) (http.Header, []byte) {
+	contentType := rawHeaders.Get("Content-Type")
+	headers := RedactHeaders(rawHeaders, auth)
+	body = RedactJSONBody(body, contentType)
+	body = RedactSecretEcho(body, auth)
+	return headers, body
+}
+
+// buildSentRequest produces the post-redaction view of what went out
+// on the wire. Pure given (httpReq, sentBody, auth) — doesn't touch
+// network or FS. Mirrors redactResponse so the two sides share the
+// same masking rules (headerRedactPattern + body-field patterns +
+// literal-byte echo).
+func buildSentRequest(httpReq *http.Request, sentBody []byte, auth *credential.Resolved) SentRequest {
+	reqCT := httpReq.Header.Get("Content-Type")
+	// Copy the body before redacting so the original slice (held by the
+	// http.Client's body reader) stays intact.
+	redactedBody := RedactJSONBody(append([]byte(nil), sentBody...), reqCT)
+	redactedBody = RedactSecretEcho(redactedBody, auth)
+	return SentRequest{
+		Method:    httpReq.Method,
+		URL:       httpReq.URL.String(),
+		Headers:   RedactHeaders(httpReq.Header, auth),
+		Body:      redactedBody,
+		BodyBytes: len(sentBody),
+		RequestCT: reqCT,
+	}
 }
 
 // buildRedirectPolicy returns the CheckRedirect function for the HTTP
@@ -286,95 +209,8 @@ func buildRedirectPolicy(auth *credential.Resolved, follow bool) func(*http.Requ
 	}
 }
 
-// writeTrackRecord persists a full-fidelity Request/Response record via
-// internal/track when --track was set. Returns the audit ID for the
-// caller to surface, or "" if persistence failed (best-effort; a track
-// failure must never fail the underlying request).
-func writeTrackRecord(req Request, resp *Response, started time.Time) string {
-	id, err := track.NewID()
-	if err != nil {
-		return ""
-	}
-	profile := ""
-	if req.Auth != nil {
-		profile = req.Auth.Name
-	} else {
-		profile = "none"
-	}
-	outcome := "ok"
-	if resp.Status >= 400 {
-		outcome = "error"
-	}
-	rec := &track.Record{
-		ID:        id,
-		Timestamp: started.UTC(),
-		Profile:   profile,
-		Template:  req.TemplateName,
-		Request: track.Request{
-			Method:      resp.Sent.Method,
-			URL:         resp.Sent.URL,
-			Headers:     resp.Sent.Headers,
-			Body:        string(resp.Sent.Body),
-			BodyBytes:   resp.Sent.BodyBytes,
-			ContentType: resp.Sent.RequestCT,
-		},
-		Response: track.Response{
-			Status:      resp.Status,
-			StatusText:  resp.StatusText,
-			Headers:     resp.Headers,
-			ContentType: resp.ContentType,
-			Body:        string(resp.Body),
-			Truncated:   resp.Truncated,
-		},
-		Outcome:    outcome,
-		DurationMS: time.Since(started).Milliseconds(),
-	}
-	if err := track.Write(rec); err != nil {
-		return ""
-	}
-	return id
-}
-
-// buildAuditEntry converts a Do invocation's inputs + outcome into an
-// audit.Entry. Pure function — all state comes from its args, making the
-// deferred call site in Do trivial to read.
-func buildAuditEntry(req Request, started time.Time, resp *Response, outErr error) audit.Entry {
-	scheme, host, path := audit.FromURL(req.URL)
-	e := audit.Entry{
-		Method:     defaultStr(req.Method, "GET"),
-		Scheme:     scheme,
-		Host:       host,
-		Path:       path,
-		Jar:        req.JarPath,
-		Template:   req.TemplateName,
-		DurationMS: time.Since(started).Milliseconds(),
-	}
-	if req.Auth != nil {
-		e.Profile = req.Auth.Name
-	} else {
-		// req.Auth == nil means explicit anonymous (`--profile none`) at
-		// this layer — Resolve already errored out for the no-match case.
-		e.Profile = "none"
-	}
-	if resp != nil {
-		e.Status = resp.Status
-		e.Bytes = len(resp.Body)
-	}
-	if outErr == nil {
-		e.Outcome = "ok"
-	} else {
-		e.Outcome = "error"
-		e.Error = outErr.Error()
-		var ae *agenterrors.APIError
-		if agenterrors.As(outErr, &ae) {
-			e.FixableBy = string(ae.FixableBy)
-		}
-	}
-	return e
-}
-
-// readCappedBody reads at most maxBytes from r. Returns truncated=true when
-// the underlying stream had more data than we kept.
+// readCappedBody reads at most maxBytes from r. Returns truncated=true
+// when the underlying stream had more data than we kept.
 func readCappedBody(r io.Reader, maxBytes int64) ([]byte, bool, error) {
 	limited := io.LimitReader(r, maxBytes+1)
 	body, err := io.ReadAll(limited)
