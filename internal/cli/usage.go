@@ -80,7 +80,7 @@ SECRET-SAFETY RULES
     stored alongside the primary secret. BYO jars (--cookiejar <path>) are plaintext —
     the caller picked the path.
   - Escalation commands (profile allow / set-default-header / set-allow-http /
-    change-secret / jar mark-visible) require --passphrase, which is
+    set-secret / jar mark-visible) require --passphrase, which is
     verified (constant-time) against a value stored with the profile. A
     wrong passphrase errors cleanly; the LLM without it can't escalate.
     The passphrase defaults to the primary secret unless the human set
@@ -107,7 +107,8 @@ get useless results which are themselves an audit signal)
   profile allow-path <name> <pattern> --passphrase <p>
   profile set-default-header <name> "K: V" --passphrase <p>
   profile set-allow-http <name> true --passphrase <p>
-  profile change-secret <name> --passphrase <p> [--token T | --password P | ...]
+  profile set-secret <name> --passphrase <p> [--token T | --password P | ...]
+  profile set-passphrase <name> --passphrase <p> --new-passphrase <n>
   profile set-health <name> <url>
   profile set-user-agent <name> <ua>
 

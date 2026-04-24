@@ -105,7 +105,7 @@ func Store(c Credential, s Secrets) (storage string, err error) {
 	// initial add, this defaults to the primary-secret representative
 	// value (so an existing user who never set --passphrase can still
 	// escalate by typing the primary secret). On subsequent Store calls
-	// (change-secret, etc.) the caller is responsible for passing the
+	// (set-secret, etc.) the caller is responsible for passing the
 	// right Passphrase — we only fill in the blank.
 	if s.Passphrase == "" {
 		s.Passphrase = DefaultPassphrase(c.Type, s)

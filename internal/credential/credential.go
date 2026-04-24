@@ -96,7 +96,7 @@ type Secrets struct {
 
 	// Passphrase is the human-level authorization key used to authenticate
 	// modifications to the profile (allow, allow-path, set-default-header,
-	// set-allow-http, change-secret, jar mark-visible). At add time the
+	// set-allow-http, set-secret, jar mark-visible). At add time the
 	// human can optionally set a short friendly phrase via --passphrase;
 	// otherwise it defaults to a representative value of the primary
 	// secret (bearer token, password, etc.) — see DefaultPassphrase.
@@ -112,7 +112,7 @@ type Secrets struct {
 
 	// PassphraseAutoDerived is true when the stored Passphrase was
 	// defaulted from the primary secret (the user didn't pass
-	// --passphrase at add time). change-secret uses this: when true,
+	// --passphrase at add time). set-secret uses this: when true,
 	// the Passphrase is re-derived from the NEW primary on rotation;
 	// when false (human-chosen passphrase), it persists.
 	PassphraseAutoDerived bool `json:"passphrase_auto_derived,omitempty"`

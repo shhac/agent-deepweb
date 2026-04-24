@@ -130,7 +130,7 @@ agent-deepweb's job: don't be a hole in the harness's sandbox. The harness (Clau
 | Cookie jars encrypted at rest | AES-256-GCM with per-profile random key alongside the primary secret |
 | BYO jar (`--cookiejar <path>`) is plaintext | The caller picked the path; explicit ownership of the contents |
 | Sensitive cookies masked in `jar show` | HttpOnly + name-pattern classification; human override via `mark-sensitive`/`mark-visible` |
-| Escalation requires a passphrase | `profile allow / set-default-header / set-allow-http / change-secret / jar mark-visible` all require `--passphrase`, constant-time verified against a value stored with the profile. The passphrase defaults to the primary secret unless a friendly one was set at `profile add` time |
+| Escalation requires a passphrase | `profile allow / set-default-header / set-allow-http / set-secret / jar mark-visible` all require `--passphrase`, constant-time verified against a value stored with the profile. The passphrase defaults to the primary secret unless a friendly one was set at `profile add` time |
 | Every request is audited | Append-only JSONL at `~/.config/agent-deepweb/audit.log`, including `profile` and `jar` fields |
 
 The passphrase replaces v2's original "re-assert the primary secret" design. UX is better (a short friendly phrase beats pasting a 64-byte token) and failure modes are cleaner (wrong passphrase errors; wrong re-asserted secret used to silently break the profile). Security asymmetry is unchanged: the human knows the passphrase, the LLM doesn't.
@@ -182,7 +182,8 @@ agent-deepweb profile set-default-header <name> "K: V" --passphrase <p>
 agent-deepweb profile unset-default-header <name> K
 agent-deepweb profile set-allow-http <name> true --passphrase <p>
 agent-deepweb profile set-user-agent <name> <ua>
-agent-deepweb profile change-secret <name> --passphrase <p> [--token T | --password P | ...]
+agent-deepweb profile set-secret <name> --passphrase <p> [--token T | --password P | ...]
+agent-deepweb profile set-passphrase <name> --passphrase <p> --new-passphrase <n>
 
 agent-deepweb login <name>                       Form-login flow (writes to jar)
 agent-deepweb jar status <name>

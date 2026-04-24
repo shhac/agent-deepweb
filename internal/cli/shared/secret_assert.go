@@ -50,7 +50,7 @@ func ApplyPassphraseAssert(name string, a *PassphraseAssert) error {
 	case errors.Is(err, credential.ErrPassphraseMismatch):
 		return agenterrors.Newf(agenterrors.FixableByAgent,
 			"--passphrase does not match the one stored for %q", name).
-			WithHint("Check the passphrase with the user. If they don't remember, they can run 'agent-deepweb profile change-secret " + name + "' to rotate.")
+			WithHint("Check the passphrase with the user. If they don't remember, they can run 'agent-deepweb profile set-secret " + name + "' to rotate.")
 	default:
 		return credential.ClassifyLookupErr(err, name)
 	}

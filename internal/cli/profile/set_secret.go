@@ -8,14 +8,14 @@ import (
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 )
 
-// registerChangeSecret wires `profile change-secret <name>` — the
+// registerSetSecret wires `profile set-secret <name>` — the
 // "rotate the primary secret, touch nothing else" verb.
 //
 // Today the only way to change a stored password/token was to either
 // (a) `profile remove` + `profile add` (loses the jar + JarKey; forces
 // re-login on form profiles), or (b) run any escalation command with
 // the new creds and let the v0.2-era overwrite side-effect carry them
-// through. Both are hacky. `change-secret` is the explicit verb for
+// through. Both are hacky. `set-secret` is the explicit verb for
 // the common "my password rotated, update it" case.
 //
 // Mechanics:
@@ -29,7 +29,7 @@ import (
 //     new primary so authentication keeps working symmetrically.
 //   - For form auth, clear the jar — the old session was tied to the
 //     old password.
-func registerChangeSecret(parent *cobra.Command) {
+func registerSetSecret(parent *cobra.Command) {
 	auth := &shared.PassphraseAssert{}
 	var (
 		newToken       string
@@ -42,7 +42,7 @@ func registerChangeSecret(parent *cobra.Command) {
 		newPassphrase  string
 	)
 	cmd := &cobra.Command{
-		Use:   "change-secret <name>",
+		Use:   "set-secret <name>",
 		Short: "Rotate the profile's primary secret (preserves allowlist, headers, jar-key)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

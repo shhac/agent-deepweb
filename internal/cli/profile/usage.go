@@ -28,7 +28,8 @@ SUBCOMMANDS (HUMAN-ONLY — escalation; require --passphrase)
   allow-path <name> <pattern> --passphrase <p>   Widen path allowlist
   set-default-header <name> "K: V" --passphrase <p>  Add an outbound default header
   set-allow-http <name> true --passphrase <p>  Permit http:// for this profile
-  change-secret <name> --passphrase <p> [new-secret flags]  Rotate the primary secret
+  set-secret <name> --passphrase <p> [new-secret flags]  Rotate the primary secret
+  set-passphrase <name> --passphrase <p> --new-passphrase <n>  Rotate just the passphrase
 
 THE PASSPHRASE
   Every escalation requires --passphrase, which is constant-time
@@ -41,7 +42,7 @@ THE PASSPHRASE
   That means a profile registered without --passphrase is still
   escalatable — by typing the primary secret into --passphrase.
 
-  An auto-derived passphrase re-derives on change-secret (so the
+  An auto-derived passphrase re-derives on set-secret (so the
   symmetry holds). A human-set passphrase persists across primary
   rotations unless explicitly changed via --new-passphrase.
 
@@ -71,7 +72,7 @@ EXAMPLES
     agent-deepweb profile allow github gist.github.com --passphrase 'gh-admin-phrase-2026'
 
   Rotate the bearer token, keep the friendly passphrase:
-    agent-deepweb profile change-secret github --passphrase 'gh-admin-phrase-2026' --token ghp_NEW
+    agent-deepweb profile set-secret github --passphrase 'gh-admin-phrase-2026' --token ghp_NEW
 
 NOTES
   - 'show' and 'list' never reveal secret values or the passphrase.
