@@ -21,23 +21,27 @@ func registerRun(parent *cobra.Command) {
 	var timeoutMS int
 	var maxBytes int64
 	var format string
+	var track, hideRequest, hideResponse bool
 
 	cmd := &cobra.Command{
 		Use:   "run <name>",
 		Short: "Run a template with the given parameters",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTemplate(args[0], params, timeoutMS, maxBytes, format)
+			return runTemplate(args[0], params, timeoutMS, maxBytes, format, track, hideRequest, hideResponse)
 		},
 	}
 	cmd.Flags().StringArrayVarP(&params, "param", "p", nil, "Template parameter 'name=value' (repeatable)")
 	cmd.Flags().IntVar(&timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&maxBytes, "max-size", 0, "Max response body size in bytes")
 	cmd.Flags().StringVar(&format, "format", "", "Output format: json, raw, text")
+	cmd.Flags().BoolVar(&track, "track", false, "Persist a full-fidelity record; retrieve later with 'audit show <id>'")
+	cmd.Flags().BoolVar(&hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
+	cmd.Flags().BoolVar(&hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
 	parent.AddCommand(cmd)
 }
 
-func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64, formatStr string) error {
+func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64, formatStr string, track, hideRequest, hideResponse bool) error {
 	tpl, err := template.Get(name)
 	if err != nil {
 		return shared.Fail(template.ClassifyLookupErr(err, name))
@@ -73,13 +77,14 @@ func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64,
 		Body:         body,
 		Auth:         auth,
 		TemplateName: name,
+		Track:        track,
 	}, api.ClientOptions{
 		Timeout:         timeout,
 		MaxBytes:        maxBytesResolved,
 		FollowRedirects: true,
 	})
 
-	writeOutput(name, expandedURL, auth, resp, formatStr)
+	writeOutput(name, expandedURL, auth, resp, formatStr, hideRequest, hideResponse)
 	if doErr != nil {
 		return shared.Fail(doErr)
 	}
@@ -145,19 +150,26 @@ func chooseMethod(flag string, hasBody bool) string {
 	return "GET"
 }
 
-func writeOutput(name, expandedURL string, auth *credential.Resolved, resp *api.Response, formatStr string) {
+func writeOutput(name, expandedURL string, auth *credential.Resolved, resp *api.Response, formatStr string, hideRequest, hideResponse bool) {
 	if resp == nil {
 		return
 	}
 	output.RenderResponse(output.EnvelopeIn{
-		URL:         expandedURL,
-		Auth:        auth,
-		Status:      resp.Status,
-		StatusText:  resp.StatusText,
-		Headers:     resp.Headers,
-		ContentType: resp.ContentType,
-		Body:        resp.Body,
-		Truncated:   resp.Truncated,
+		URL:              expandedURL,
+		Auth:             auth,
+		Status:           resp.Status,
+		StatusText:       resp.StatusText,
+		Headers:          resp.Headers,
+		ContentType:      resp.ContentType,
+		Body:             resp.Body,
+		Truncated:        resp.Truncated,
+		RequestMethod:    resp.Sent.Method,
+		RequestURL:       resp.Sent.URL,
+		RequestHeaders:   resp.Sent.Headers,
+		RequestBodyBytes: resp.Sent.BodyBytes,
+		AuditID:          resp.AuditID,
+		HideRequest:      hideRequest,
+		HideResponse:     hideResponse,
 	}, resp.Status, resp.StatusText, resp.Body, formatStr,
 		map[string]any{"template": name})
 }

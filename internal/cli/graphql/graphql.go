@@ -25,6 +25,9 @@ type opts struct {
 	timeoutMS     int
 	maxBytes      int64
 	format        string
+	track         bool
+	hideRequest   bool
+	hideResponse  bool
 }
 
 func Register(root *cobra.Command, globals shared.Globals) {
@@ -45,6 +48,9 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
 	cmd.Flags().StringVar(&o.format, "format", "", "Output format: json, raw, text")
+	cmd.Flags().BoolVar(&o.track, "track", false, "Persist a full-fidelity record of this request/response; retrieve later with 'agent-deepweb audit show <id>'")
+	cmd.Flags().BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
+	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "llm-help",
@@ -100,13 +106,14 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 		Body:    bytes.NewReader(body),
 		Auth:    auth,
 		JarPath: o.cookieJar,
+		Track:   o.track,
 	}, api.ClientOptions{
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
 		FollowRedirects: true,
 	})
 
-	envelope, parsed := buildGraphQLEnvelope(endpoint, auth, resp)
+	envelope, parsed := buildGraphQLEnvelope(endpoint, auth, resp, o.hideRequest, o.hideResponse)
 	output.PrintJSON(envelope)
 
 	if err != nil {
@@ -151,33 +158,49 @@ func buildGraphQLPayload(o *opts) ([]byte, error) {
 
 // buildGraphQLEnvelope produces the top-level JSON envelope emitted to
 // stdout and returns the parsed response so the caller can inspect errors
-// without re-unmarshalling.
-func buildGraphQLEnvelope(endpoint string, auth *credential.Resolved, resp *api.Response) (map[string]any, gqlResponse) {
+// without re-unmarshalling. hideRequest/hideResponse mirror the same
+// flags on fetch — token-saving opt-outs for the LLM.
+func buildGraphQLEnvelope(endpoint string, auth *credential.Resolved, resp *api.Response, hideRequest, hideResponse bool) (map[string]any, gqlResponse) {
 	envelope := map[string]any{
-		"endpoint":  endpoint,
-		"status":    nil,
-		"truncated": false,
-		"data":      nil,
-		"errors":    nil,
-		"profile":   nil,
+		"endpoint": endpoint,
+		"status":   nil,
+		"profile":  nil,
 	}
 	if auth != nil {
 		envelope["profile"] = auth.Name
+	}
+	if resp != nil && resp.AuditID != "" {
+		envelope["audit_id"] = resp.AuditID
+	}
+	if !hideRequest && resp != nil && resp.Sent.Method != "" {
+		envelope["request"] = map[string]any{
+			"method":     resp.Sent.Method,
+			"url":        resp.Sent.URL,
+			"headers":    resp.Sent.Headers,
+			"body_bytes": resp.Sent.BodyBytes,
+		}
+	}
+	if !hideResponse {
+		envelope["truncated"] = false
+		envelope["data"] = nil
+		envelope["errors"] = nil
 	}
 	var parsed gqlResponse
 	if resp == nil {
 		return envelope, parsed
 	}
 	envelope["status"] = resp.Status
-	envelope["truncated"] = resp.Truncated
 	_ = json.Unmarshal(resp.Body, &parsed)
-	if len(parsed.Data) > 0 {
-		var dataAny any
-		_ = json.Unmarshal(parsed.Data, &dataAny)
-		envelope["data"] = dataAny
-	}
-	if len(parsed.Errors) > 0 {
-		envelope["errors"] = parsed.Errors
+	if !hideResponse {
+		envelope["truncated"] = resp.Truncated
+		if len(parsed.Data) > 0 {
+			var dataAny any
+			_ = json.Unmarshal(parsed.Data, &dataAny)
+			envelope["data"] = dataAny
+		}
+		if len(parsed.Errors) > 0 {
+			envelope["errors"] = parsed.Errors
+		}
 	}
 	return envelope, parsed
 }

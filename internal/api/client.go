@@ -16,6 +16,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -27,6 +28,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
+	"github.com/shhac/agent-deepweb/internal/track"
 )
 
 // Version is the agent-deepweb build version used in the default User-Agent
@@ -55,6 +57,11 @@ type Request struct {
 	// TemplateName is set by `tpl run` so the audit log can record which
 	// template produced the request. Empty for ad-hoc fetches.
 	TemplateName string
+	// Track, when true, tells Do to persist a full-fidelity record of
+	// the request+response (via internal/track) and to stamp an AuditID
+	// on the response so the caller can surface it in the envelope. The
+	// CLI layer wires this up via the `--track` flag.
+	Track bool
 }
 
 // Response is the redacted, size-capped response surfaced to the caller.
@@ -70,6 +77,28 @@ type Response struct {
 	// ones have values; sensitive ones are redacted. Empty when no profile
 	// is attached.
 	NewCookies []credential.CookieView `json:"new_cookies,omitempty"`
+	// Sent captures what went out on the wire, for envelope display and
+	// track-record persistence. Headers and body are redacted the same
+	// way the response side is (auth headers masked, body-field secrets
+	// masked, literal-value echoes masked).
+	Sent SentRequest
+	// AuditID is set when Request.Track was true. Empty otherwise.
+	// Callers include it in the response envelope so humans can look
+	// up the full record via `audit show <id>`.
+	AuditID string
+}
+
+// SentRequest is the post-redaction view of what was sent to the server.
+// Populated by Do so callers can display request info symmetrically with
+// response info. Body is redacted; BodyBytes is the raw (pre-redaction)
+// size so envelopes can show it without dumping possibly-binary payloads.
+type SentRequest struct {
+	Method     string
+	URL        string
+	Headers    http.Header
+	Body       []byte
+	BodyBytes  int
+	RequestCT  string // Content-Type header of the request
 }
 
 // ClientOptions carry request-level defaults that would otherwise pile up
@@ -124,6 +153,22 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 			WithHint("Use scheme://host/path form")
 	}
 
+	// Buffer the request body so we can both send it AND record it for
+	// envelope/track display. Skip if Body is nil (GET, etc.). Cap at
+	// MaxBytes so a giant upload doesn't blow memory.
+	var sentBody []byte
+	if req.Body != nil {
+		buf, _, readErr := readCappedBody(req.Body, opts.MaxBytes)
+		if readErr != nil {
+			return nil, agenterrors.Wrap(readErr, agenterrors.FixableByAgent)
+		}
+		// Over-cap on the outbound side means the body itself wouldn't
+		// fit under --max-size, which is a caller bug; we surface the
+		// truncation via BodyBytes below rather than erroring here.
+		sentBody = buf
+		req.Body = bytes.NewReader(sentBody)
+	}
+
 	if err := enforceScheme(parsedURL, req.Auth); err != nil {
 		return nil, err
 	}
@@ -165,6 +210,23 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 	body = RedactJSONBody(body, contentType)
 	body = RedactSecretEcho(body, req.Auth)
 
+	// Build the sent-request view: redact headers + body the same way the
+	// response side is redacted. The raw BodyBytes stays on the struct
+	// so the envelope can show a byte count instead of the full body
+	// (useful for binary uploads).
+	sentHeaders := RedactHeaders(httpReq.Header)
+	reqCT := httpReq.Header.Get("Content-Type")
+	redactedSentBody := RedactJSONBody(append([]byte(nil), sentBody...), reqCT)
+	redactedSentBody = RedactSecretEcho(redactedSentBody, req.Auth)
+	sent := SentRequest{
+		Method:    httpReq.Method,
+		URL:       httpReq.URL.String(),
+		Headers:   sentHeaders,
+		Body:      redactedSentBody,
+		BodyBytes: len(sentBody),
+		RequestCT: reqCT,
+	}
+
 	resp = &Response{
 		Status:      httpResp.StatusCode,
 		StatusText:  httpResp.Status,
@@ -173,6 +235,10 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 		Body:        body,
 		Truncated:   truncated,
 		NewCookies:  newCookieViews,
+		Sent:        sent,
+	}
+	if req.Track {
+		resp.AuditID = writeTrackRecord(req, resp, started)
 	}
 
 	if httpResp.StatusCode >= 400 {
@@ -218,6 +284,55 @@ func buildRedirectPolicy(auth *credential.Resolved, follow bool) func(*http.Requ
 		}
 		return nil
 	}
+}
+
+// writeTrackRecord persists a full-fidelity Request/Response record via
+// internal/track when --track was set. Returns the audit ID for the
+// caller to surface, or "" if persistence failed (best-effort; a track
+// failure must never fail the underlying request).
+func writeTrackRecord(req Request, resp *Response, started time.Time) string {
+	id, err := track.NewID()
+	if err != nil {
+		return ""
+	}
+	profile := ""
+	if req.Auth != nil {
+		profile = req.Auth.Name
+	} else {
+		profile = "none"
+	}
+	outcome := "ok"
+	if resp.Status >= 400 {
+		outcome = "error"
+	}
+	rec := &track.Record{
+		ID:        id,
+		Timestamp: started.UTC(),
+		Profile:   profile,
+		Template:  req.TemplateName,
+		Request: track.Request{
+			Method:      resp.Sent.Method,
+			URL:         resp.Sent.URL,
+			Headers:     resp.Sent.Headers,
+			Body:        string(resp.Sent.Body),
+			BodyBytes:   resp.Sent.BodyBytes,
+			ContentType: resp.Sent.RequestCT,
+		},
+		Response: track.Response{
+			Status:      resp.Status,
+			StatusText:  resp.StatusText,
+			Headers:     resp.Headers,
+			ContentType: resp.ContentType,
+			Body:        string(resp.Body),
+			Truncated:   resp.Truncated,
+		},
+		Outcome:    outcome,
+		DurationMS: time.Since(started).Milliseconds(),
+	}
+	if err := track.Write(rec); err != nil {
+		return ""
+	}
+	return id
 }
 
 // buildAuditEntry converts a Do invocation's inputs + outcome into an

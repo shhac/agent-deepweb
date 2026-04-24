@@ -22,24 +22,65 @@ type EnvelopeIn struct {
 	ContentType string
 	Body        []byte
 	Truncated   bool
+
+	// Request info surfaced alongside the response. Populated by the CLI
+	// layer from api.Response.Sent. Included in the envelope by default;
+	// suppressed when HideRequest is true (--hide-request CLI flag).
+	RequestMethod    string
+	RequestURL       string
+	RequestHeaders   http.Header
+	RequestBodyBytes int
+
+	// AuditID is set when the request was run with --track. Empty
+	// otherwise; omitted from the envelope when empty.
+	AuditID string
+
+	// Visibility toggles driven by --hide-request / --hide-response.
+	// Default: both false (all fields included).
+	HideRequest  bool
+	HideResponse bool
 }
 
 // BuildHTTPEnvelope returns the LLM-facing map for fetch/tpl responses.
 // Shape is stable — documented in fetch/usage.go.
+//
+// By default includes:
+//   - response: status, status_text, url, headers, content_type, truncated, body
+//   - request: method, url, headers, body_bytes
+//   - profile: the resolved profile name or "none"/nil
+//   - audit_id: when --track was set
+//
+// --hide-request drops the "request" field (save tokens when the LLM
+// only cares about the response). --hide-response drops everything
+// response-shaped except status/url/profile/audit_id (save tokens when
+// the LLM only cares about "did it work").
 func BuildHTTPEnvelope(in EnvelopeIn) map[string]any {
 	env := map[string]any{
-		"status":       in.Status,
-		"status_text":  in.StatusText,
-		"url":          in.URL,
-		"headers":      in.Headers,
-		"content_type": in.ContentType,
-		"truncated":    in.Truncated,
-		"body":         RenderBody(in.ContentType, in.Body),
+		"url":    in.URL,
+		"status": in.Status,
 	}
 	if in.Auth != nil {
 		env["profile"] = in.Auth.Name
 	} else {
 		env["profile"] = nil
+	}
+	if in.AuditID != "" {
+		env["audit_id"] = in.AuditID
+	}
+	if !in.HideResponse {
+		env["status_text"] = in.StatusText
+		env["headers"] = in.Headers
+		env["content_type"] = in.ContentType
+		env["truncated"] = in.Truncated
+		env["body"] = RenderBody(in.ContentType, in.Body)
+	}
+	if !in.HideRequest && in.RequestMethod != "" {
+		env["request"] = map[string]any{
+			"method":     in.RequestMethod,
+			"url":        in.RequestURL,
+			"headers":    in.RequestHeaders,
+			"body_bytes": in.RequestBodyBytes,
+		}
 	}
 	return env
 }
@@ -54,15 +95,24 @@ func BuildHTTPEnvelope(in EnvelopeIn) map[string]any {
 //
 // Centralising this means the JSON envelope shape, the text-format
 // preamble, and the raw-bytes fallback evolve in one place.
+//
+// When --track was used, the audit ID is also written to stderr so
+// it's visible in raw/text modes where the envelope isn't printed.
 func RenderResponse(in EnvelopeIn, status int, statusText string, body []byte, format string, extras map[string]any) {
 	f, _ := ParseFormat(format)
 	switch f {
 	case FormatRaw:
 		_, _ = os.Stdout.Write(body)
+		if in.AuditID != "" {
+			fmt.Fprintln(os.Stderr, "audit_id:", in.AuditID)
+		}
 		return
 	case FormatText:
 		fmt.Printf("HTTP %d %s\n\n", status, statusText)
 		_, _ = os.Stdout.Write(body)
+		if in.AuditID != "" {
+			fmt.Fprintln(os.Stderr, "audit_id:", in.AuditID)
+		}
 		return
 	}
 	env := BuildHTTPEnvelope(in)
