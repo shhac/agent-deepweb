@@ -51,7 +51,7 @@ internal/
   track/track.go                    Opt-in full-fidelity request/response records (AES-at-rest n/a; files are mode 0600)
   cli/                              Cobra command tree
     root.go                         Global flags + subcommand registration
-    usage.go                        Top-level llm-help card
+    usage.go                        Top-level usage card
     shared/                         Helpers used by every subcommand
       shared.go                     GlobalFlags, ResolveProfile (URL allowlist + ambiguity, ProfileNone sentinel)
       helpers.go                    Fail*, PrintOK, LoadProfileMetadata/Resolved, LoadInlineSpec, ResolveLimits, First*, Split*
@@ -122,7 +122,7 @@ skills/agent-deepweb/SKILL.md       Claude Code skill definition + permission al
 | `profile` | CRUD for profiles. Escalation commands require primary secret re-assertion. `remove` clears the jar too. |
 | `login` / `jar` | Form-login flow + per-profile jar inspection. |
 | `audit` | Inspect the append-only request log. |
-| `llm-help` | Per-verb reference cards. |
+| `usage` | Per-verb reference cards. |
 
 The harness (Claude Code) decides which of these the LLM can run. SKILL.md ships the recommended allowlist.
 

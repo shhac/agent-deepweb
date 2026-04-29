@@ -27,7 +27,7 @@ The narrow exception: if the user explicitly wants the audit trail + redaction o
 ## 1. Quick start — read-only, safe to explore
 
 ```bash
-agent-deepweb llm-help                           # Top-level reference card
+agent-deepweb usage                              # Top-level reference card
 agent-deepweb profile list                       # Profiles available (no secrets)
 agent-deepweb profile show <name>                # Metadata for one profile
 agent-deepweb profile test <name>                # Send a health-check request
@@ -218,7 +218,7 @@ For Claude Code (or equivalent), allowlist these commands to the LLM:
 
 ```
 Allow:
-  agent-deepweb llm-help
+  agent-deepweb usage
   agent-deepweb fetch *
   agent-deepweb graphql *
   agent-deepweb template run *

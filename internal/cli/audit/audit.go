@@ -19,7 +19,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Inspect the request audit log",
 	}
 
-	shared.LLMHelp(cmd, "audit", usageText)
+	shared.RegisterUsage(cmd, "audit", usageText)
 
 	var nLines int
 	tailCmd := &cobra.Command{

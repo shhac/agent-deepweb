@@ -51,7 +51,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
 	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
 
-	shared.LLMHelp(cmd, "graphql", usageText)
+	shared.RegisterUsage(cmd, "graphql", usageText)
 	registerImportSchema(cmd)
 
 	root.AddCommand(cmd)
@@ -214,4 +214,3 @@ func classifyGraphQL(message string, extensions map[string]any) *agenterrors.API
 	return agenterrors.Newf(agenterrors.FixableByAgent, "GraphQL error: %s", message).
 		WithHint("Check the query, variables, and field selection")
 }
-

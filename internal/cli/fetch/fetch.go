@@ -51,7 +51,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	}
 	bindFlags(cmd, o)
 
-	shared.LLMHelp(cmd, "fetch", usageText)
+	shared.RegisterUsage(cmd, "fetch", usageText)
 
 	root.AddCommand(cmd)
 }

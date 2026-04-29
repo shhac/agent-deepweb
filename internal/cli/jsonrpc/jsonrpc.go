@@ -8,7 +8,7 @@
 //
 //	jsonrpc.go   Register + run + buildPayload + buildEnvelope
 //	classify.go  standard error codes → fixable_by
-//	usage.go     llm-help reference card
+//	usage.go     usage reference card
 package jsonrpc
 
 import (
@@ -64,7 +64,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
 	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
 
-	shared.LLMHelp(cmd, "jsonrpc", usageText)
+	shared.RegisterUsage(cmd, "jsonrpc", usageText)
 
 	root.AddCommand(cmd)
 }

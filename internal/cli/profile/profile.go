@@ -22,7 +22,6 @@
 package profile
 
 import (
-
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
@@ -36,7 +35,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Manage stored profiles (auth identities)",
 	}
 
-	shared.LLMHelp(cmd, "profile", usageText)
+	shared.RegisterUsage(cmd, "profile", usageText)
 
 	registerList(cmd)
 	registerShow(cmd)

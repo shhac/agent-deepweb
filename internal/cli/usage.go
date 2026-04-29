@@ -8,7 +8,7 @@ import (
 
 func registerUsageCommand(root *cobra.Command) {
 	usage := &cobra.Command{
-		Use:   "llm-help",
+		Use:   "usage",
 		Short: "Show LLM-optimized reference card",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Print(referenceCard)
@@ -96,14 +96,14 @@ SECRET-SAFETY RULES
     a friendly one at 'profile add' time via --passphrase.
 
 PER-VERB REFERENCE (run these for detailed help)
-  fetch llm-help                     fetch command reference
-  graphql llm-help                   graphql command reference
-  jsonrpc llm-help                   jsonrpc command reference
-  template llm-help                  template commands reference
-  profile llm-help                   profile commands reference
-  login llm-help                     login / jar commands reference
-  audit llm-help                     audit log commands reference
-  config llm-help                    persistent user config
+  fetch usage                        fetch command reference
+  graphql usage                      graphql command reference
+  jsonrpc usage                      jsonrpc command reference
+  template usage                     template commands reference
+  profile usage                      profile commands reference
+  login usage                        login / jar commands reference
+  audit usage                        audit log commands reference
+  config usage                       persistent user config
 
 PROFILE MANAGEMENT (typically human-run; LLMs without secret values
 get useless results which are themselves an audit signal)

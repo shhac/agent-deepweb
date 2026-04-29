@@ -23,7 +23,7 @@ SUBCOMMANDS (agent-safe — read-only or non-escalating)
   set-user-agent <name> <ua>              Set per-profile User-Agent
   mark-header-sensitive <name> <h> [...]  Force redact headers beyond the built-in regex
 
-RELATED — COOKIE JAR (see 'agent-deepweb login llm-help' for full details)
+RELATED — COOKIE JAR (see 'agent-deepweb login usage' for full details)
   jar status <name>                       Cookie count / expiry / has-token summary
   jar show <name>                         Cookies (sensitive values redacted)
   jar clear <name>                        Empty the jar (reset session state)

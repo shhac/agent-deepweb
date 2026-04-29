@@ -20,7 +20,7 @@ func registerJar(root *cobra.Command) {
 		Use:   "jar",
 		Short: "Per-profile cookie jar inspection and management",
 	}
-	shared.LLMHelp(jar, "jar", usageText)
+	shared.RegisterUsage(jar, "jar", usageText)
 	jar.AddCommand(&cobra.Command{
 		Use:   "status <name>",
 		Short: "Jar metadata summary (cookie count, expiry — no values)",

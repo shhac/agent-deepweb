@@ -20,7 +20,7 @@ brew install shhac/tap/agent-deepweb
 git clone https://github.com/shhac/agent-deepweb.git
 cd agent-deepweb
 make build
-./agent-deepweb llm-help
+./agent-deepweb usage
 ```
 
 ## Quick start
@@ -158,7 +158,7 @@ Errors go to stderr as JSON with a classification so the LLM knows what to do ne
 ## Commands
 
 ```
-agent-deepweb llm-help                           Reference card
+agent-deepweb usage                              Reference card
 agent-deepweb fetch <url> [flags]                HTTP request with auth
 agent-deepweb graphql <url> [flags]              GraphQL POST
 
@@ -197,7 +197,7 @@ agent-deepweb audit tail [-n N]
 agent-deepweb audit summary
 ```
 
-Per-command `llm-help` subcommands exist for all top-level verbs.
+Per-command `usage` subcommands exist for all top-level verbs.
 
 ## Output formats
 
@@ -232,7 +232,7 @@ AGENT_DEEPWEB_CONFIG_DIR         Override ~/.config/agent-deepweb (useful in tes
 `skills/agent-deepweb/SKILL.md` ships with the repo. Configure your harness to allowlist these commands for the LLM:
 
 ```
-agent-deepweb llm-help
+agent-deepweb usage
 agent-deepweb fetch *
 agent-deepweb graphql *
 agent-deepweb template run *

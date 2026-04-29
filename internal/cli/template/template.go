@@ -10,7 +10,6 @@
 package templatecli
 
 import (
-
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
@@ -25,7 +24,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Parameterised request templates (highest-safety mode)",
 	}
 
-	shared.LLMHelp(cmd, "template", usageText)
+	shared.RegisterUsage(cmd, "template", usageText)
 
 	registerList(cmd)
 	registerShow(cmd)

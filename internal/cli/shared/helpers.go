@@ -172,14 +172,14 @@ func ResolveLimits(flagTimeoutMS int, flagMaxBytes int64, g *GlobalFlags) (time.
 	return time.Duration(timeoutMS) * time.Millisecond, maxBytes
 }
 
-// LLMHelp wires the canonical `<verb> llm-help` subcommand. Every CLI
+// RegisterUsage wires the canonical `<verb> usage` subcommand. Every CLI
 // verb in the tree had the same 4-line block; centralising it removes
-// the per-package fmt import and makes the per-verb llm-help docs
-// findable from one place.
-func LLMHelp(parent *cobra.Command, verb, usage string) {
+// the per-package fmt import and makes the per-verb usage docs findable
+// from one place.
+func RegisterUsage(parent *cobra.Command, verb, text string) {
 	parent.AddCommand(&cobra.Command{
-		Use:   "llm-help",
+		Use:   "usage",
 		Short: "Show detailed reference for " + verb,
-		Run:   func(*cobra.Command, []string) { fmt.Print(usage) },
+		Run:   func(*cobra.Command, []string) { fmt.Print(text) },
 	})
 }
