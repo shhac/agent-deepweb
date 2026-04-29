@@ -1,6 +1,7 @@
 ---
 name: agent-deepweb
-description: How to drive the `agent-deepweb` CLI — a separate tool (https://github.com/shhac/agent-deepweb) the user has installed for credential-gated HTTP. This skill does NOT replace `curl`, `WebFetch`, or other HTTP tools for unauthenticated requests; it is narrowly about invoking `agent-deepweb`'s subcommands when the user has already registered a named profile. You reference profiles by name via `--profile <name>`; you never see the stored secret values, and you cannot escalate without the profile's `--passphrase` (which you don't have).
+description: Drives the `agent-deepweb` CLI for credential-gated HTTP requests where profiles are referenced by name and stored secret values are never visible to the caller. Use when the user has registered a named profile and wants an authenticated fetch, GraphQL POST, or JSON-RPC call; when a request needs a Bearer token, basic auth, cookie, or custom auth header; or when the user mentions `agent-deepweb`, a profile name, "use my profile", or "make an authenticated request". Does NOT replace `curl`, `WebFetch`, or other HTTP tools for unauthenticated public URLs. Cannot escalate (widen scope, rotate secrets, mark cookies visible) without the profile's `--passphrase`, which the LLM does not have.
+allowed-tools: Bash(agent-deepweb *) Read Grep Glob
 ---
 
 # agent-deepweb skill
