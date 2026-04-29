@@ -40,9 +40,9 @@ func newRootCmd(version string) *cobra.Command {
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "Profile name, or 'none' for explicit anonymous (falls back to config 'default.profile')")
-	root.PersistentFlags().StringVar(&flagFormat, "format", "", "Output format: json, jsonl, raw, text")
-	root.PersistentFlags().IntVar(&flagTimeout, "timeout", 0, "Request timeout in milliseconds (falls back to config 'default.timeout-ms')")
+	root.PersistentFlags().StringVarP(&flagProfile, "profile", "p", "", "Profile name, or 'none' for explicit anonymous (falls back to config 'default.profile')")
+	root.PersistentFlags().StringVarP(&flagFormat, "format", "f", "", "Output format: json, jsonl, raw, text")
+	root.PersistentFlags().IntVarP(&flagTimeout, "timeout", "t", 0, "Request timeout in milliseconds (falls back to config 'default.timeout-ms')")
 
 	// Precedence for --profile: flag > config.default.profile > empty.
 	// No env var — config replaces AGENT_DEEPWEB_PROFILE in v0.4.
