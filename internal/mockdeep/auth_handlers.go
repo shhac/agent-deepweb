@@ -142,4 +142,3 @@ func (s *Server) tokenProtected(w http.ResponseWriter, r *http.Request) {
 		"auth_method": "login_issued_bearer",
 	})
 }
-

@@ -97,9 +97,9 @@ func ImportPostman(data []byte, opts ImportPostmanOptions) ([]string, error) {
 // there's no safe translation for scripts into agent-deepweb's
 // declarative template world.
 type postmanDoc struct {
-	Info     postmanInfo        `json:"info"`
-	Item     []postmanItem      `json:"item"`
-	Variable []postmanVariable  `json:"variable"`
+	Info     postmanInfo       `json:"info"`
+	Item     []postmanItem     `json:"item"`
+	Variable []postmanVariable `json:"variable"`
 }
 
 type postmanInfo struct {
@@ -115,10 +115,10 @@ type postmanItem struct {
 }
 
 type postmanRequest struct {
-	Method string            `json:"method"`
-	URL    json.RawMessage   `json:"url"` // string OR object; we peek
-	Header []postmanHeader   `json:"header"`
-	Body   *postmanBody      `json:"body"`
+	Method string          `json:"method"`
+	URL    json.RawMessage `json:"url"` // string OR object; we peek
+	Header []postmanHeader `json:"header"`
+	Body   *postmanBody    `json:"body"`
 }
 
 type postmanHeader struct {
@@ -128,12 +128,12 @@ type postmanHeader struct {
 }
 
 type postmanBody struct {
-	Mode       string            `json:"mode"` // raw | urlencoded | formdata | file | graphql
-	Raw        string            `json:"raw"`
-	URLEncoded []postmanBodyKV   `json:"urlencoded"`
-	FormData   []postmanBodyKV   `json:"formdata"`
-	Options    *postmanBodyOpts  `json:"options"`
-	GraphQL    *postmanGraphQL   `json:"graphql"`
+	Mode       string           `json:"mode"` // raw | urlencoded | formdata | file | graphql
+	Raw        string           `json:"raw"`
+	URLEncoded []postmanBodyKV  `json:"urlencoded"`
+	FormData   []postmanBodyKV  `json:"formdata"`
+	Options    *postmanBodyOpts `json:"options"`
+	GraphQL    *postmanGraphQL  `json:"graphql"`
 }
 
 type postmanBodyKV struct {

@@ -24,13 +24,13 @@ func TestAppend_Concurrent(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			Append(Entry{
-				Method:     "GET",
-				Host:       "example.com",
-				Path:       "/p",
+				Method:  "GET",
+				Host:    "example.com",
+				Path:    "/p",
 				Profile: "c",
-				Status:     200,
-				Outcome:    "ok",
-				Bytes:      i,
+				Status:  200,
+				Outcome: "ok",
+				Bytes:   i,
 			})
 		}(i)
 	}

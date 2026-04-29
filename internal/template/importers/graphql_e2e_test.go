@@ -174,4 +174,3 @@ func namesList(ts []template.Template) []string {
 	}
 	return out
 }
-

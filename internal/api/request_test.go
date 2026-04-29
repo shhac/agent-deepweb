@@ -21,10 +21,10 @@ func TestResolveUserAgent_Precedence(t *testing.T) {
 	credNoUA := &credential.Resolved{Credential: credential.Credential{UserAgent: ""}}
 
 	cases := []struct {
-		name      string
-		req       Request
-		configUA  string
-		want      string
+		name     string
+		req      Request
+		configUA string
+		want     string
 	}{
 		{
 			name: "default (no overrides)",

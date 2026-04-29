@@ -8,10 +8,10 @@ import "strings"
 // (host-level security, definitions/$ref, produces/consumes details)
 // is dropped; that's the same loss posture as the v3 path.
 type swaggerV2Doc struct {
-	Swagger  string                      `json:"swagger"`
-	Host     string                      `json:"host"`
-	BasePath string                      `json:"basePath"`
-	Schemes  []string                    `json:"schemes"`
+	Swagger  string                       `json:"swagger"`
+	Host     string                       `json:"host"`
+	BasePath string                       `json:"basePath"`
+	Schemes  []string                     `json:"schemes"`
 	Paths    map[string]swaggerV2PathItem `json:"paths"`
 }
 
@@ -161,4 +161,3 @@ func pickJSONContentType(consumes []string) string {
 	}
 	return "application/json"
 }
-

@@ -47,8 +47,8 @@ type Record struct {
 	Template   string    `json:"template,omitempty"`
 	Request    Request   `json:"request"`
 	Response   Response  `json:"response"`
-	Outcome    string    `json:"outcome"`             // "ok" | "error"
-	Error      string    `json:"error,omitempty"`     // error message when outcome=error
+	Outcome    string    `json:"outcome"`         // "ok" | "error"
+	Error      string    `json:"error,omitempty"` // error message when outcome=error
 	FixableBy  string    `json:"fixable_by,omitempty"`
 	DurationMS int64     `json:"duration_ms"`
 }
@@ -201,4 +201,3 @@ func pruneWhere(should func(*Record) bool) (int, error) {
 func PruneByProfile(name string) (int, error) {
 	return pruneWhere(func(r *Record) bool { return r.Profile == name })
 }
-

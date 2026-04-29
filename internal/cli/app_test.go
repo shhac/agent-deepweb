@@ -49,7 +49,9 @@ func TestApp_InstallOverridesSecretBackend(t *testing.T) {
 
 type stubSecretBackend struct{}
 
-func (stubSecretBackend) Available() bool                          { return false }
-func (stubSecretBackend) Store(string, credential.Secrets) error   { return fmt.Errorf("stub") }
-func (stubSecretBackend) Get(string) (credential.Secrets, error)   { return credential.Secrets{}, fmt.Errorf("stub") }
-func (stubSecretBackend) Delete(string)                            {}
+func (stubSecretBackend) Available() bool                        { return false }
+func (stubSecretBackend) Store(string, credential.Secrets) error { return fmt.Errorf("stub") }
+func (stubSecretBackend) Get(string) (credential.Secrets, error) {
+	return credential.Secrets{}, fmt.Errorf("stub")
+}
+func (stubSecretBackend) Delete(string) {}

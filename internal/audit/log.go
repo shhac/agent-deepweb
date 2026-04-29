@@ -19,11 +19,11 @@ import (
 
 // Entry is a single audited request.
 type Entry struct {
-	Timestamp  time.Time `json:"ts"`
-	Method     string    `json:"method"`
-	Scheme     string    `json:"scheme,omitempty"`
-	Host       string    `json:"host"`
-	Path       string    `json:"path,omitempty"`
+	Timestamp time.Time `json:"ts"`
+	Method    string    `json:"method"`
+	Scheme    string    `json:"scheme,omitempty"`
+	Host      string    `json:"host"`
+	Path      string    `json:"path,omitempty"`
 	// Profile is the profile name in use, "none" for explicit anonymous,
 	// or "" when no profile was attached (the legacy ad-hoc-URL case).
 	Profile string `json:"profile,omitempty"`

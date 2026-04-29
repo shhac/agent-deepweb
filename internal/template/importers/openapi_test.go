@@ -314,7 +314,7 @@ func TestImportOpenAPI_FallsBackOperationIdToSluggedMethodPath(t *testing.T) {
 // conversion in isolation.
 func TestPathToPlaceholders(t *testing.T) {
 	cases := map[string]string{
-		"/users/{id}":               "/users/{{id}}",
+		"/users/{id}":                "/users/{{id}}",
 		"/users/{id}/posts/{postId}": "/users/{{id}}/posts/{{postId}}",
 		"/health":                    "/health",
 		"/items/{id:int}":            "/items/{{id}}", // type hints stripped
@@ -329,11 +329,11 @@ func TestPathToPlaceholders(t *testing.T) {
 // TestSanitiseIdentifier covers the name-slug rules in isolation.
 func TestSanitiseIdentifier(t *testing.T) {
 	cases := map[string]string{
-		"getUser":             "getuser",
-		"GET /users/{id}":     "get_users_id",
-		"create.user":         "create.user",
-		"__weird__name__":     "weird_name",
-		"items-v2":            "items-v2",
+		"getUser":         "getuser",
+		"GET /users/{id}": "get_users_id",
+		"create.user":     "create.user",
+		"__weird__name__": "weird_name",
+		"items-v2":        "items-v2",
 	}
 	for in, want := range cases {
 		if got := sanitiseIdentifier(in); got != want {

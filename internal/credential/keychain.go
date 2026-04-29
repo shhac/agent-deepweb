@@ -93,10 +93,12 @@ func (keychainBackend) Delete(name string) {
 // path exists only so the interface is satisfied.
 type noopBackend struct{}
 
-func (noopBackend) Available() bool                     { return false }
-func (noopBackend) Store(string, Secrets) error         { return fmt.Errorf("keychain not available") }
-func (noopBackend) Get(string) (Secrets, error)         { return Secrets{}, fmt.Errorf("keychain not available") }
-func (noopBackend) Delete(string)                       {}
+func (noopBackend) Available() bool             { return false }
+func (noopBackend) Store(string, Secrets) error { return fmt.Errorf("keychain not available") }
+func (noopBackend) Get(string) (Secrets, error) {
+	return Secrets{}, fmt.Errorf("keychain not available")
+}
+func (noopBackend) Delete(string) {}
 
 // NoopBackend returns an unusable SecretBackend that Store sees as
 // unavailable, forcing the file-fallback path. Tests that mutate

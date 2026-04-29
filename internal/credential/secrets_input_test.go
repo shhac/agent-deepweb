@@ -170,9 +170,9 @@ func TestBuildSecretsCore_UnknownType(t *testing.T) {
 // exercising the header-parsing rules.
 func TestSplitHeaderColon(t *testing.T) {
 	cases := []struct {
-		in       string
-		k, v     string
-		ok       bool
+		in   string
+		k, v string
+		ok   bool
 	}{
 		{"X: y", "X", "y", true},
 		{"  X  :  y  ", "X", "y", true},

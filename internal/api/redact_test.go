@@ -97,8 +97,8 @@ func TestRedactSecretEcho_MasksLiteralValues(t *testing.T) {
 // does).
 func TestRedactHeaders_PerProfileOverrides(t *testing.T) {
 	h := http.Header{}
-	h.Set("Authorization", "Bearer xxx")                  // default-sensitive
-	h.Set("X-Correlation-ID", "visible-by-default")       // default-visible
+	h.Set("Authorization", "Bearer xxx")                      // default-sensitive
+	h.Set("X-Correlation-ID", "visible-by-default")           // default-visible
 	h.Set("X-My-Weird-Secret", "custom-field-we-want-hidden") // LLM-unfriendly name
 
 	resolved := &credential.Resolved{

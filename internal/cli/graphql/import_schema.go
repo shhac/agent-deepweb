@@ -94,13 +94,13 @@ func registerImportSchema(parent *cobra.Command) {
 				stored = append(stored, t.Name)
 			}
 			shared.PrintOK(map[string]any{
-				"imported":       stored,
-				"count":          len(stored),
-				"prefix":         prefix,
-				"profile":        profileNameOrEmpty(profile),
-				"query_type":     schema.QueryTypeName,
-				"mutation_type":  schema.MutationTypeName,
-				"only_filter":    only,
+				"imported":      stored,
+				"count":         len(stored),
+				"prefix":        prefix,
+				"profile":       profileNameOrEmpty(profile),
+				"query_type":    schema.QueryTypeName,
+				"mutation_type": schema.MutationTypeName,
+				"only_filter":   only,
 			})
 			return nil
 		},
@@ -130,4 +130,3 @@ func profileNameOrEmpty(s string) string {
 	}
 	return s
 }
-

@@ -172,9 +172,9 @@ func TestBuildMultipart_MultipleFiles_ProducesParts(t *testing.T) {
 // must be backslash-escaped so the header parses reliably.
 func TestEscapeQuotes(t *testing.T) {
 	cases := map[string]string{
-		"simple":           "simple",
-		`has "quote"`:      `has \"quote\"`,
-		`back\slash`:       `back\slash`, // we don't escape the backslash
+		"simple":            "simple",
+		`has "quote"`:       `has \"quote\"`,
+		`back\slash`:        `back\slash`, // we don't escape the backslash
 		`mixed "and"\stuff`: `mixed \"and\"\stuff`,
 	}
 	for in, want := range cases {

@@ -89,8 +89,8 @@ func TestDiffNewCookies_Pure(t *testing.T) {
 		{Name: "b", Domain: "x", Path: "/"},
 	})
 	after := []credential.PersistedCookie{
-		{Name: "a", Domain: "x", Path: "/"},              // existed
-		{Name: "b", Domain: "x", Path: "/"},              // existed
+		{Name: "a", Domain: "x", Path: "/"},                                   // existed
+		{Name: "b", Domain: "x", Path: "/"},                                   // existed
 		{Name: "c", Domain: "x", Path: "/", Sensitive: true, Value: "secret"}, // new, sensitive
 		{Name: "d", Domain: "x", Path: "/", Value: "vis"},                     // new, visible
 	}

@@ -162,4 +162,3 @@ func ExpandHeaders(headersTpl map[string]string, params map[string]any) (map[str
 	}
 	return out, nil
 }
-

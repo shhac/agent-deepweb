@@ -33,11 +33,11 @@ func registerImportPostman(parent *cobra.Command) {
 					WithHint("Export your Postman collection as 'Collection v2.1' — v2.0 also works; older versions do not."))
 			}
 			shared.PrintOK(map[string]any{
-				"imported":    imported,
-				"count":       len(imported),
-				"prefix":      prefix,
-				"profile":     profile,
-				"folder":      folderPath,
+				"imported": imported,
+				"count":    len(imported),
+				"prefix":   prefix,
+				"profile":  profile,
+				"folder":   folderPath,
 			})
 			return nil
 		},

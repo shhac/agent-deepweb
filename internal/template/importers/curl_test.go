@@ -187,9 +187,9 @@ func TestShellLex(t *testing.T) {
 		{`curl "a b" 'c d'`, []string{"curl", "a b", "c d"}},
 		{`curl -H "X: Y"`, []string{"curl", "-H", "X: Y"}},
 		{`a \"escaped\" b`, []string{`a`, `"escaped"`, `b`}},
-		{"curl \\\n  https://x", []string{"curl", "https://x"}},                 // line-continuation
-		{`curl -d "{\"k\":\"v\"}"`, []string{"curl", "-d", `{"k":"v"}`}},        // escaped quotes inside double quotes
-		{`curl -d '{"k":"v"}'`, []string{"curl", "-d", `{"k":"v"}`}},            // raw inside single quotes
+		{"curl \\\n  https://x", []string{"curl", "https://x"}},          // line-continuation
+		{`curl -d "{\"k\":\"v\"}"`, []string{"curl", "-d", `{"k":"v"}`}}, // escaped quotes inside double quotes
+		{`curl -d '{"k":"v"}'`, []string{"curl", "-d", `{"k":"v"}`}},     // raw inside single quotes
 	}
 	for _, tc := range cases {
 		got, err := shellLex(tc.in)

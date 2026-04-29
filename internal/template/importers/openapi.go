@@ -341,4 +341,3 @@ func looksLikeYAML(data []byte) bool {
 	}
 	return false
 }
-

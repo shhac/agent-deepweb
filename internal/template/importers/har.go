@@ -116,21 +116,21 @@ type harPostData struct {
 // get re-run later should pick those up from the profile's jar, not
 // carry the stale capture values.
 var stripHeaders = map[string]bool{
-	"authorization":       true,
-	"cookie":              true,
-	"set-cookie":          true,
-	"x-csrf-token":        true,
-	"x-csrftoken":         true,
-	"x-xsrf-token":        true,
-	"x-api-key":           true, // profile attaches instead
-	":authority":          true, // HTTP/2 pseudo-header
-	":method":             true,
-	":path":               true,
-	":scheme":             true,
-	"content-length":      true, // auto-computed by the http client
-	"host":                true, // auto-set by the http client
-	"accept-encoding":     true, // transport-level; user shouldn't override
-	"user-agent":          true, // profile's UA / per-request --user-agent wins
+	"authorization":   true,
+	"cookie":          true,
+	"set-cookie":      true,
+	"x-csrf-token":    true,
+	"x-csrftoken":     true,
+	"x-xsrf-token":    true,
+	"x-api-key":       true, // profile attaches instead
+	":authority":      true, // HTTP/2 pseudo-header
+	":method":         true,
+	":path":           true,
+	":scheme":         true,
+	"content-length":  true, // auto-computed by the http client
+	"host":            true, // auto-set by the http client
+	"accept-encoding": true, // transport-level; user shouldn't override
+	"user-agent":      true, // profile's UA / per-request --user-agent wins
 }
 
 func harEntryToTemplate(e harEntry, opts ImportHAROptions, idx int, counters map[string]int) (template.Template, error) {
