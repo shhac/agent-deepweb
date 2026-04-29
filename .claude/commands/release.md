@@ -69,6 +69,14 @@ shasum -a 256 *.tar.gz agent-deepweb-windows-amd64.exe > checksums-sha256.txt
 cd ..
 ```
 
+Smoke-test the native binary before proceeding (auth-free — proves the binary
+loads and the command tree wired up correctly):
+
+```bash
+./dist/agent-deepweb-darwin-arm64 --version
+./dist/agent-deepweb-darwin-arm64 usage
+```
+
 ### Step 3: Create GitHub release
 
 If goreleaser handled it, skip this step. Otherwise:
