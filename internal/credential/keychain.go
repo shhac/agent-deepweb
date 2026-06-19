@@ -3,9 +3,9 @@ package credential
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"runtime"
-	"strings"
+
+	"github.com/shhac/lib-agent-cli/creds"
 )
 
 const keychainService = "app.paulie.agent-deepweb"
@@ -37,7 +37,7 @@ var DefaultBackend SecretBackend = selectDefaultBackend()
 
 func selectDefaultBackend() SecretBackend {
 	if runtime.GOOS == "darwin" {
-		return keychainBackend{}
+		return newKeychainBackend()
 	}
 	return noopBackend{}
 }
@@ -51,41 +51,46 @@ func SetBackend(b SecretBackend) func() {
 	return func() { DefaultBackend = prev }
 }
 
-// keychainBackend shells out to the macOS `security` CLI. Parallels
-// what ships on every Mac by default — no C deps required.
-type keychainBackend struct{}
+// keychainBackend persists the Secrets blob in the macOS login keychain
+// via the shared creds.Keychain helper (which shells out to the
+// `security` CLI under the hood). The CLI owns the reverse-domain
+// service name; the library is handed it via NewKeychain and never
+// learns the "app.paulie." prefix itself.
+//
+// The keychain stores a single string per account, so Store/Get
+// JSON-marshal the Secrets struct on the way in and out. Get translates
+// the helper's (value, found) result into the (Secrets, error) shape the
+// rest of the package expects, mapping not-found to *NotFoundError.
+type keychainBackend struct{ kc *creds.Keychain }
 
-func (keychainBackend) Available() bool { return true }
+func newKeychainBackend() keychainBackend {
+	return keychainBackend{kc: creds.NewKeychain(keychainService)}
+}
 
-func (keychainBackend) Store(name string, secrets Secrets) error {
+func (b keychainBackend) Available() bool { return b.kc.Available() }
+
+func (b keychainBackend) Store(name string, secrets Secrets) error {
 	data, err := json.Marshal(secrets)
 	if err != nil {
 		return err
 	}
-	_ = exec.Command("security", "delete-generic-password",
-		"-s", keychainService, "-a", name).Run()
-	return exec.Command("security", "add-generic-password",
-		"-s", keychainService, "-a", name, "-w", string(data), "-U",
-	).Run()
+	return b.kc.Set(name, string(data))
 }
 
-func (keychainBackend) Get(name string) (Secrets, error) {
-	out, err := exec.Command("security", "find-generic-password",
-		"-s", keychainService, "-a", name, "-w",
-	).Output()
-	if err != nil {
-		return Secrets{}, err
+func (b keychainBackend) Get(name string) (Secrets, error) {
+	raw, ok := b.kc.Get(name)
+	if !ok {
+		return Secrets{}, &NotFoundError{Name: name}
 	}
 	var s Secrets
-	if err := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &s); err != nil {
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
 		return Secrets{}, err
 	}
 	return s, nil
 }
 
-func (keychainBackend) Delete(name string) {
-	_ = exec.Command("security", "delete-generic-password",
-		"-s", keychainService, "-a", name).Run()
+func (b keychainBackend) Delete(name string) {
+	_ = b.kc.Delete(name)
 }
 
 // noopBackend is the "no system keychain here" fallback. Available
