@@ -19,6 +19,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/shhac/lib-agent-cli/xdg"
 )
 
 type Config struct {
@@ -82,14 +84,13 @@ func (s *Store) ConfigDir() string {
 	if s.dir != "" {
 		return s.dir
 	}
+	// AGENT_DEEPWEB_CONFIG_DIR is a deepweb-specific override that wins over
+	// the standard XDG resolution; keep it ahead of xdg.ConfigDir, which
+	// handles the XDG_CONFIG_HOME/agent-deepweb → ~/.config/agent-deepweb tail.
 	if env := os.Getenv("AGENT_DEEPWEB_CONFIG_DIR"); env != "" {
 		return env
 	}
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "agent-deepweb")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "agent-deepweb")
+	return xdg.ConfigDir("agent-deepweb")
 }
 
 func (s *Store) configPath() string {

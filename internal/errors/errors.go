@@ -1,61 +1,57 @@
-// Package errors defines the APIError type used across agent-deepweb.
-// Every error surfaced to the user/LLM carries a fixable_by classification
-// and an optional human-readable hint so the consumer knows whether to
-// retry, fix their input, or escalate to a human.
+// Package errors re-exports the shared error contract from lib-agent-output so
+// the rest of agent-deepweb keeps the internal/errors import path while the
+// implementation lives in one place. Every error surfaced to the user/LLM
+// carries a fixable_by classification and an optional human-readable hint so
+// the consumer knows whether to retry, fix their input, or escalate to a human.
+//
+// (Migration shim — call sites can later be pointed at lib-agent-output
+// directly and this package deleted.)
 package errors
 
 import (
-	"errors"
-	"fmt"
+	stderrors "errors"
+
+	out "github.com/shhac/lib-agent-output"
 )
 
-type FixableBy string
+type (
+	FixableBy = out.FixableBy
+	// APIError is agent-deepweb's family name for the shared output.Error type.
+	// It carries the same Message/FixableBy/Hint/Cause fields and the same
+	// WithHint/WithCause chaining methods the CLI relies on.
+	APIError = out.Error
+)
 
 const (
-	FixableByAgent FixableBy = "agent"
-	FixableByHuman FixableBy = "human"
-	FixableByRetry FixableBy = "retry"
+	FixableByAgent = out.FixableByAgent
+	FixableByHuman = out.FixableByHuman
+	FixableByRetry = out.FixableByRetry
 )
 
-type APIError struct {
-	Message   string    `json:"error"`
-	Hint      string    `json:"hint,omitempty"`
-	FixableBy FixableBy `json:"fixable_by"`
-	Cause     error     `json:"-"`
-}
+var (
+	New  = out.New
+	Newf = out.Newf
+)
 
-func (e *APIError) Error() string { return e.Message }
-func (e *APIError) Unwrap() error { return e.Cause }
-
-func New(message string, fixableBy FixableBy) *APIError {
-	return &APIError{Message: message, FixableBy: fixableBy}
-}
-
-func Newf(fixableBy FixableBy, format string, args ...any) *APIError {
-	return &APIError{Message: fmt.Sprintf(format, args...), FixableBy: fixableBy}
-}
-
+// Wrap classifies an existing error, preserving an already-classified
+// *APIError unchanged (its original fixable_by/hint win). This dedup is
+// agent-deepweb policy: the shared out.Wrap always re-wraps with the new
+// classification, which would override a previously-set fixable_by when a
+// classified error flows back through Wrap. Nil-safe like out.Wrap.
 func Wrap(err error, fixableBy FixableBy) *APIError {
 	if err == nil {
 		return nil
 	}
 	var existing *APIError
-	if errors.As(err, &existing) {
+	if stderrors.As(err, &existing) {
 		return existing
 	}
-	return &APIError{Message: err.Error(), FixableBy: fixableBy, Cause: err}
+	return out.Wrap(err, fixableBy)
 }
 
-func (e *APIError) WithHint(hint string) *APIError {
-	e.Hint = hint
-	return e
-}
-
-func (e *APIError) WithCause(cause error) *APIError {
-	e.Cause = cause
-	return e
-}
-
+// As keeps the loose target signature the rest of the package expects
+// (callers pass **APIError, but the loose any avoids forcing the concrete
+// type at every site).
 func As(err error, target any) bool {
-	return errors.As(err, target)
+	return stderrors.As(err, target)
 }
