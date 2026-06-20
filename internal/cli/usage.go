@@ -65,10 +65,12 @@ COMMON WORKFLOWS
 GLOBAL FLAGS
   --profile <name>                   Profile name, or 'none' for explicit anonymous
                                      (falls back to config 'default.profile')
-  --cookiejar <path>                 Bring-your-own cookie jar (plaintext JSON file).
-                                     Overrides the profile's encrypted default.
   --format json|jsonl|raw|text       Output format (default: json)
   --timeout <ms>                     Request timeout in ms (falls back to config 'default.timeout-ms')
+
+PER-VERB FLAGS (fetch / graphql / jsonrpc only)
+  --cookiejar <path>                 Bring-your-own cookie jar (plaintext JSON file).
+                                     Overrides the profile's encrypted default.
 
 CONFIG
   Persistent user config lives at ~/.config/agent-deepweb/config.json

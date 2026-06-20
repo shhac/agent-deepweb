@@ -20,7 +20,7 @@ FLAGS
   --operation-name <name>    Operation name for multi-op documents
   --timeout <ms>
   --max-size <bytes>
-  --format json|raw|text
+  --format json|jsonl|raw|text
 
 EXAMPLES
   agent-deepweb graphql https://api.github.com/graphql --profile github \
