@@ -86,8 +86,8 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 			if env["error"] == nil || env["error"] == "" {
 				t.Errorf("missing error field: %v", env)
 			}
-			if env["fixable_by"] != "human" {
-				t.Errorf("cobra mistakes should be fixable_by:human, got %v", env["fixable_by"])
+			if env["fixable_by"] != "agent" {
+				t.Errorf("cobra mistakes should be fixable_by:agent, got %v", env["fixable_by"])
 			}
 		})
 	}
