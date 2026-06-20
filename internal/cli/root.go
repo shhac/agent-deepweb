@@ -88,11 +88,12 @@ func (a *App) Execute(version string) error {
 	// unknown/malformed flag, arg-count violations — never pass through a
 	// RunE handler, so nobody rendered them. Without this they would exit
 	// 1 silently, the one way an error CAN reach the user as nothing at
-	// all. They are always user-typed mistakes, hence fixable_by:human.
-	// Already-rendered RunE errors are *APIError and are left untouched
-	// (no double-render).
+	// all. The calling agent can correct a mistyped command/flag, so these
+	// are fixable_by:agent (matching the rest of the agent-* family and the
+	// lib's HandleUnknownCommand). Already-rendered RunE errors are
+	// *APIError and are left untouched (no double-render).
 	if err != nil && !agenterrors.As(err, new(*agenterrors.APIError)) {
-		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByAgent))
 	}
 	return err
 }
