@@ -14,6 +14,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	templatecli "github.com/shhac/agent-deepweb/internal/cli/template"
 	"github.com/shhac/agent-deepweb/internal/config"
+	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 )
 
 var (
@@ -78,9 +79,20 @@ func Execute(version string) error {
 func (a *App) Execute(version string) error {
 	a.install()
 	api.Version = version
-	// Errors are already written to stderr as structured JSON by the
-	// individual RunE handlers via output.WriteError. Cobra's own
-	// error printing is silenced (SilenceErrors) so the user/LLM sees
-	// exactly one JSON error, and the non-zero exit comes from main.
-	return newRootCmd(version).Execute()
+	// RunE handlers render their own errors as structured JSON via
+	// shared.Fail (an *APIError) before returning. Cobra's own error
+	// printing is silenced (SilenceErrors) so the user/LLM sees exactly
+	// one JSON error, and the non-zero exit comes from main.
+	err := newRootCmd(version).Execute()
+	// Errors that originate inside cobra itself — unknown command,
+	// unknown/malformed flag, arg-count violations — never pass through a
+	// RunE handler, so nobody rendered them. Without this they would exit
+	// 1 silently, the one way an error CAN reach the user as nothing at
+	// all. They are always user-typed mistakes, hence fixable_by:human.
+	// Already-rendered RunE errors are *APIError and are left untouched
+	// (no double-render).
+	if err != nil && !agenterrors.As(err, new(*agenterrors.APIError)) {
+		return shared.Fail(agenterrors.Wrap(err, agenterrors.FixableByHuman))
+	}
+	return err
 }
