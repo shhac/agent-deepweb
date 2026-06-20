@@ -65,6 +65,14 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 		{"unknown command", []string{"boguscmd"}},
 		{"unknown flag", []string{"fetch", "--bogusflag"}},
 		{"missing required arg", []string{"fetch"}},
+		// Per-group unknown subcommands: each domain group installs
+		// libcli.HandleUnknownCommand so `<group> bogus` is a structured
+		// fixable_by:agent error, not cobra's plain help on stdout + exit 0.
+		{"unknown profile subcommand", []string{"profile", "boguscmd"}},
+		{"unknown template subcommand", []string{"template", "boguscmd"}},
+		{"unknown audit subcommand", []string{"audit", "boguscmd"}},
+		{"unknown config subcommand", []string{"config", "boguscmd"}},
+		{"unknown jar subcommand", []string{"jar", "boguscmd"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,6 +102,30 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 				t.Errorf("cobra mistakes should be fixable_by:agent, got %v", env["fixable_by"])
 			}
 		})
+	}
+}
+
+// TestProfileShorthand_OnRequestVerbs — the request verbs (fetch/graphql/
+// jsonrpc) each register a LOCAL --profile that shadows the root's persistent
+// --profile/-p. Before the fix, the local flag had no shorthand, so `fetch -p
+// none` failed with "unknown shorthand flag 'p'". The local flags now carry
+// the -p shorthand too, so it parses on the subcommand exactly as it does at
+// the global position.
+func TestProfileShorthand_OnRequestVerbs(t *testing.T) {
+	root := newRootCmd("test")
+	for _, verb := range []string{"fetch", "graphql", "jsonrpc"} {
+		cmd, _, err := root.Find([]string{verb})
+		if err != nil {
+			t.Fatalf("verb %q not found: %v", verb, err)
+		}
+		f := cmd.Flags().ShorthandLookup("p")
+		if f == nil {
+			t.Errorf("%s: no -p shorthand registered", verb)
+			continue
+		}
+		if f.Name != "profile" {
+			t.Errorf("%s: -p maps to %q, want profile", verb, f.Name)
+		}
 	}
 }
 

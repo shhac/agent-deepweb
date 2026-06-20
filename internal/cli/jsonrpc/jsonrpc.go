@@ -51,7 +51,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 			return run(args[0], globals(), o)
 		},
 	}
-	cmd.Flags().StringVar(&o.profile, "profile", "", "Profile name, or 'none' for explicit anonymous")
+	cmd.Flags().StringVarP(&o.profile, "profile", "p", "", "Profile name, or 'none' for explicit anonymous")
 	cmd.Flags().StringVar(&o.cookieJar, "cookiejar", "", "Bring-your-own cookie jar (plaintext JSON file)")
 	cmd.Flags().StringVar(&o.method, "method", "", "JSON-RPC method name (required, e.g. eth_blockNumber)")
 	cmd.Flags().StringVar(&o.params, "params", "", "JSON-encoded params (array or object, or @file, @-)")

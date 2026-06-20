@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	cfg "github.com/shhac/agent-deepweb/internal/config"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
@@ -21,6 +23,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Manage agent-deepweb's persistent user config",
 	}
 	shared.RegisterUsage(cmd, "config", usageText)
+	libcli.HandleUnknownCommand(cmd, "run 'agent-deepweb config usage' to see the available subcommands")
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list-keys",

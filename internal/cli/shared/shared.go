@@ -22,6 +22,13 @@ const ProfileNone = "none"
 // GlobalFlags is the set of flags registered on the root command. The
 // shared --format/--timeout/--debug live in the embedded libcli.Globals
 // (Format/TimeoutMS/Debug); --profile is agent-deepweb's domain flag.
+//
+// NOTE: --debug (libcli.Globals.Debug) is currently INERT — it is parsed
+// but nothing reads it. There is no debug-writer seam in api.Do/ClientOptions
+// yet, and emitting request diagnostics would have to reuse the same
+// redaction pipeline (buildSentRequest) so debug output can never leak a
+// secret. Wire that seam before giving --debug behaviour; until then it is a
+// documented no-op rather than a half-built feature.
 type GlobalFlags struct {
 	libcli.Globals // Format, TimeoutMS, Debug
 

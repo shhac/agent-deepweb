@@ -24,6 +24,8 @@ package profile
 import (
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	"github.com/shhac/agent-deepweb/internal/output"
@@ -36,6 +38,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	}
 
 	shared.RegisterUsage(cmd, "profile", usageText)
+	libcli.HandleUnknownCommand(cmd, "run 'agent-deepweb profile usage' to see the available subcommands")
 
 	registerList(cmd)
 	registerShow(cmd)

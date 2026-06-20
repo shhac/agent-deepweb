@@ -5,6 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
@@ -21,6 +23,7 @@ func registerJar(root *cobra.Command) {
 		Short: "Per-profile cookie jar inspection and management",
 	}
 	shared.RegisterUsage(jar, "jar", usageText)
+	libcli.HandleUnknownCommand(jar, "run 'agent-deepweb jar usage' to see the available subcommands")
 	jar.AddCommand(&cobra.Command{
 		Use:   "status <name>",
 		Short: "Jar metadata summary (cookie count, expiry — no values)",

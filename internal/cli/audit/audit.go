@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	auditpkg "github.com/shhac/agent-deepweb/internal/audit"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
@@ -20,6 +22,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	}
 
 	shared.RegisterUsage(cmd, "audit", usageText)
+	libcli.HandleUnknownCommand(cmd, "run 'agent-deepweb audit usage' to see the available subcommands")
 
 	var nLines int
 	tailCmd := &cobra.Command{

@@ -12,6 +12,8 @@ package templatecli
 import (
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 	"github.com/shhac/agent-deepweb/internal/output"
@@ -25,6 +27,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 	}
 
 	shared.RegisterUsage(cmd, "template", usageText)
+	libcli.HandleUnknownCommand(cmd, "run 'agent-deepweb template usage' to see the available subcommands")
 
 	registerList(cmd)
 	registerShow(cmd)

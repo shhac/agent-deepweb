@@ -58,7 +58,7 @@ func Register(root *cobra.Command, globals shared.Globals) {
 
 func bindFlags(cmd *cobra.Command, o *opts) {
 	f := cmd.Flags()
-	f.StringVar(&o.profile, "profile", "", "Profile name, or 'none' for explicit anonymous (falls back to --profile on root or config 'default.profile')")
+	f.StringVarP(&o.profile, "profile", "p", "", "Profile name, or 'none' for explicit anonymous (falls back to --profile on root or config 'default.profile')")
 	f.StringVar(&o.cookieJar, "cookiejar", "", "Bring-your-own cookie jar (plaintext JSON file). Overrides the profile's encrypted default jar.")
 	f.StringVarP(&o.method, "method", "X", "", "HTTP method (default GET, or POST if body given)")
 	f.StringArrayVarP(&o.headers, "header", "H", nil, "Extra request header (repeatable)")
@@ -70,6 +70,10 @@ func bindFlags(cmd *cobra.Command, o *opts) {
 	f.IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
 	f.Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
 	f.BoolVar(&o.followRedirects, "follow-redirects", true, "Follow redirects")
+	// Local --format deliberately shadows the global persistent --format: the
+	// request verbs additionally accept raw/text (response-body passthrough),
+	// which the global libcli format validator doesn't know about. Domain
+	// behaviour, intentional — leave it local.
 	f.StringVar(&o.format, "format", "", "Output format: json, raw, text")
 	f.StringVarP(&o.userAgent, "user-agent", "A", "", "User-Agent for this request (else credential's UA; else agent-deepweb/<version>)")
 	f.BoolVar(&o.track, "track", false, "Persist a full-fidelity record of this request/response. Envelope gains an audit_id; retrieve later with 'agent-deepweb audit show <id>'.")
