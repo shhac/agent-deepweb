@@ -28,7 +28,8 @@ func TestResolveLimits_Precedence(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			g := &GlobalFlags{Timeout: tc.globalT}
+			g := &GlobalFlags{}
+			g.TimeoutMS = tc.globalT
 			gotT, gotM := ResolveLimits(tc.flagTimeout, tc.flagMaxBytes, g)
 			if gotT != tc.wantTimeout {
 				t.Errorf("timeout=%v, want %v", gotT, tc.wantTimeout)

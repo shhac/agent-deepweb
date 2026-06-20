@@ -15,15 +15,13 @@ import (
 	"github.com/shhac/agent-deepweb/internal/output"
 )
 
-// Fail writes err to stderr as structured JSON and returns it so cobra's
-// SilenceErrors/SilenceUsage can propagate the non-zero exit without a
-// second print. Replaces the near-identical fail() helpers that lived in
-// each CLI subpackage.
+// Fail returns err for a RunE handler to bubble up. It is a no-op
+// classifier seam: the actual structured-JSON render happens exactly once
+// in libcli.Run (the single error sink in main), so Fail must NOT write to
+// stderr itself — doing so would double-print every error. It is kept as a
+// named helper (rather than a bare `return err`) because FailHuman/FailAgent
+// classify through it and 100+ call sites read as `return shared.Fail(...)`.
 func Fail(err error) error {
-	if err == nil {
-		return nil
-	}
-	output.WriteError(os.Stderr, err)
 	return err
 }
 
@@ -162,7 +160,7 @@ func ResolveLimits(flagTimeoutMS int, flagMaxBytes int64, g *GlobalFlags) (time.
 	cfg := config.Read()
 	var gt int
 	if g != nil {
-		gt = g.Timeout
+		gt = g.TimeoutMS
 	}
 	timeoutMS := FirstNonZero(flagTimeoutMS, gt, cfg.Defaults.TimeoutMS)
 	maxBytes := flagMaxBytes

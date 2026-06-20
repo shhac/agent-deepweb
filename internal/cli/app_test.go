@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"testing"
 
 	"github.com/shhac/agent-deepweb/internal/config"
 	"github.com/shhac/agent-deepweb/internal/credential"
+	"github.com/shhac/agent-deepweb/internal/output"
 )
 
 // TestDefaultApp_PopulatesAllDeps — DefaultApp wires every slot. A
@@ -53,8 +52,11 @@ func TestApp_InstallOverridesSecretBackend(t *testing.T) {
 
 // TestExecute_CobraErrorsRenderStructured — errors that originate inside
 // cobra (unknown command/flag, arg-count violations) never pass through a
-// RunE handler, so without explicit rendering they exit 1 silently. Each
-// must instead reach the user as a structured {error,fixable_by} envelope.
+// RunE handler. libcli.NewRoot classifies them as fixable_by:agent and
+// libcli.Run is the single sink that renders them as a structured
+// {error,fixable_by} envelope exactly once. This test exercises the tree the
+// way Run does — root.Execute() then output.WriteError on the bubbled error —
+// without exiting the process.
 func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 	cases := []struct {
 		name string
@@ -66,22 +68,24 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			origArgs := os.Args
-			os.Args = append([]string{"agent-deepweb"}, tc.args...)
-			defer func() { os.Args = origArgs }()
+			root := newRootCmd("test")
+			root.SetArgs(tc.args)
 
-			payload, execErr := captureStderr(t, func() error {
-				return DefaultApp().Execute("test")
-			})
+			var buf bytes.Buffer
+			execErr := root.Execute()
 			if execErr == nil {
 				t.Fatalf("expected an error for args %v", tc.args)
 			}
+			// Mirror libcli.Run's single render of the bubbled error.
+			output.WriteError(&buf, execErr)
+
+			payload := buf.Bytes()
 			if len(payload) == 0 {
-				t.Fatalf("cobra error for %v produced no stderr output (silent exit)", tc.args)
+				t.Fatalf("cobra error for %v produced no output (silent)", tc.args)
 			}
 			var env map[string]any
 			if err := json.Unmarshal(bytes.TrimSpace(payload), &env); err != nil {
-				t.Fatalf("stderr was not JSON: %q", payload)
+				t.Fatalf("output was not JSON: %q", payload)
 			}
 			if env["error"] == nil || env["error"] == "" {
 				t.Errorf("missing error field: %v", env)
@@ -91,32 +95,6 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 			}
 		})
 	}
-}
-
-// captureStderr runs fn with os.Stderr redirected to a pipe and returns
-// what was written, plus fn's returned error.
-func captureStderr(t *testing.T, fn func() error) ([]byte, error) {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	orig := os.Stderr
-	os.Stderr = w
-	defer func() { os.Stderr = orig }()
-
-	buf := &bytes.Buffer{}
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(buf, r)
-		close(done)
-	}()
-
-	fnErr := fn()
-
-	_ = w.Close()
-	<-done
-	return buf.Bytes(), fnErr
 }
 
 type stubSecretBackend struct{}

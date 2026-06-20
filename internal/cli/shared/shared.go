@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/credential"
 	agenterrors "github.com/shhac/agent-deepweb/internal/errors"
 )
@@ -17,11 +19,13 @@ import (
 // --cookiejar is also passed).
 const ProfileNone = "none"
 
-// GlobalFlags is the set of flags registered on the root command.
+// GlobalFlags is the set of flags registered on the root command. The
+// shared --format/--timeout/--debug live in the embedded libcli.Globals
+// (Format/TimeoutMS/Debug); --profile is agent-deepweb's domain flag.
 type GlobalFlags struct {
+	libcli.Globals // Format, TimeoutMS, Debug
+
 	Profile string
-	Format  string
-	Timeout int
 }
 
 // Globals is injected from cli.root — keeps command packages from depending
