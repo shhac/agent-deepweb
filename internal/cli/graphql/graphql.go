@@ -72,6 +72,13 @@ type gqlResponse struct {
 }
 
 func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
+	// Reject an unknown --format up front (fixable_by:agent) rather than
+	// silently degrading. The local flag shadows the global persistent one, so
+	// it needs its own validation against deepweb's accept-set.
+	if _, err := output.ParseFormat(shared.FirstNonEmpty(o.format, g.Format)); err != nil {
+		return shared.Fail(err)
+	}
+
 	if strings.TrimSpace(o.query) == "" {
 		return shared.Fail(agenterrors.New("--query is required", agenterrors.FixableByAgent).
 			WithHint("Pass the GraphQL document as a string, @file, or @- for stdin"))

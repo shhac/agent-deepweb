@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/shhac/agent-deepweb/internal/config"
@@ -100,6 +101,49 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 			}
 			if env["fixable_by"] != "agent" {
 				t.Errorf("cobra mistakes should be fixable_by:agent, got %v", env["fixable_by"])
+			}
+		})
+	}
+}
+
+// TestUnknownFormat_RejectedPerVerb — the request verbs register a LOCAL
+// --format that shadows the root's persistent --format (to add raw/text). That
+// shadowing previously bypassed validation, so an unknown value (e.g. yaml)
+// silently fell through to JSON with exit 0 instead of the family's
+// fixable_by:agent correction. Each verb now validates the format up front,
+// before any network work — so this test needs no server: the error fires
+// first. Mirrors libcli.Run's single render of the bubbled error.
+func TestUnknownFormat_RejectedPerVerb(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"fetch", []string{"fetch", "http://127.0.0.1:1/x", "--profile", "none", "--format", "yaml"}},
+		{"graphql", []string{"graphql", "http://127.0.0.1:1/x", "--profile", "none", "--query", "{x}", "--format", "yaml"}},
+		{"template run", []string{"template", "run", "anything", "--format", "yaml"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCmd("test")
+			root.SetArgs(tc.args)
+
+			execErr := root.Execute()
+			if execErr == nil {
+				t.Fatalf("expected an error for unknown --format on %v", tc.args)
+			}
+
+			var buf bytes.Buffer
+			output.WriteError(&buf, execErr)
+
+			var env map[string]any
+			if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &env); err != nil {
+				t.Fatalf("output was not JSON: %q", buf.Bytes())
+			}
+			if env["fixable_by"] != "agent" {
+				t.Errorf("unknown format should be fixable_by:agent, got %v", env["fixable_by"])
+			}
+			if msg, _ := env["error"].(string); !strings.Contains(msg, "unknown format") {
+				t.Errorf("error should mention unknown format, got %q", msg)
 			}
 		})
 	}

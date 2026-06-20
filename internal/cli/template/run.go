@@ -31,7 +31,9 @@ func registerRun(parent *cobra.Command) {
 			return runTemplate(args[0], params, timeoutMS, maxBytes, format, track, hideRequest, hideResponse)
 		},
 	}
-	cmd.Flags().StringArrayVarP(&params, "param", "p", nil, "Template parameter 'name=value' (repeatable)")
+	// No -p shorthand: it collides with the root's persistent --profile/-p, and
+	// cobra panics merging the two shorthands when this command runs.
+	cmd.Flags().StringArrayVar(&params, "param", nil, "Template parameter 'name=value' (repeatable)")
 	cmd.Flags().IntVar(&timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&maxBytes, "max-size", 0, "Max response body size in bytes")
 	cmd.Flags().StringVar(&format, "format", "", "Output format: json, raw, text")
@@ -42,6 +44,12 @@ func registerRun(parent *cobra.Command) {
 }
 
 func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64, formatStr string, track, hideRequest, hideResponse bool) error {
+	// Reject an unknown --format up front (fixable_by:agent) rather than
+	// silently rendering JSON — consistent with fetch/graphql.
+	if _, err := output.ParseFormat(formatStr); err != nil {
+		return shared.Fail(err)
+	}
+
 	tpl, err := template.Get(name)
 	if err != nil {
 		return shared.Fail(template.ClassifyLookupErr(err, name))

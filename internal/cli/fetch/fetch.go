@@ -82,6 +82,15 @@ func bindFlags(cmd *cobra.Command, o *opts) {
 }
 
 func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
+	// Validate the output format before doing any work. The local --format
+	// shadows the global persistent flag (to add raw/text), so it must run its
+	// own check — otherwise an unknown value (e.g. yaml) would silently fall
+	// through to JSON instead of the family's fixable_by:agent correction.
+	format := shared.FirstNonEmpty(o.format, g.Format)
+	if _, err := output.ParseFormat(format); err != nil {
+		return shared.Fail(err)
+	}
+
 	profileName := shared.FirstNonEmpty(o.profile, g.Profile)
 	auth, err := shared.ResolveProfile(rawURL, profileName)
 	if err != nil {
@@ -134,7 +143,7 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 	})
 
 	// Even on error, `resp` is non-nil for HTTP-level errors; surface whatever we have.
-	writeResponse(rawURL, auth, resp, shared.FirstNonEmpty(o.format, g.Format), o.hideRequest, o.hideResponse)
+	writeResponse(rawURL, auth, resp, format, o.hideRequest, o.hideResponse)
 	if err != nil {
 		return shared.Fail(err)
 	}

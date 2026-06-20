@@ -22,8 +22,9 @@ import (
 
 func Register(root *cobra.Command, _ shared.Globals) {
 	cmd := &cobra.Command{
-		Use:   "template",
-		Short: "Parameterised request templates (highest-safety mode)",
+		Use:     "template",
+		Aliases: []string{"tpl"},
+		Short:   "Parameterised request templates (highest-safety mode)",
 	}
 
 	shared.RegisterUsage(cmd, "template", usageText)
