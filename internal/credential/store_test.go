@@ -109,6 +109,53 @@ func TestStore_And_Remove(t *testing.T) {
 	}
 }
 
+// TestStore_Headless_FileFallback exercises the real credential-WRITE path
+// non-interactively. Setting the per-CLI keychain opt-out (derived by
+// lib-agent-cli from the "app.paulie.agent-deepweb" service) makes the keychain
+// backend report unavailable, so Store deterministically takes the 0600 file
+// fallback on every platform — including darwin, where it would otherwise reach
+// the `security` CLI and its GUI prompt. This is the path that previously could
+// only be unit-tested with a mocked backend.
+func TestStore_Headless_FileFallback(t *testing.T) {
+	t.Setenv("AGENT_DEEPWEB_NO_KEYCHAIN", "1")
+	dir := t.TempDir()
+	config.SetConfigDir(dir)
+	t.Cleanup(func() { config.SetConfigDir("") })
+
+	c := Credential{Name: "headless-write", Type: AuthBearer, Domains: []string{"api.example.com"}}
+	storage, err := Store(c, Secrets{Token: "headless-token"})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	if storage != "file" {
+		t.Fatalf("storage=%q, want \"file\" (keychain opt-out should force the file path)", storage)
+	}
+
+	secretsPath := filepath.Join(dir, "credentials.secrets.json")
+	info, err := os.Stat(secretsPath)
+	if err != nil {
+		t.Fatalf("secrets file not written: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("secrets mode=%o, want 0600", mode)
+	}
+
+	resolved, err := Resolve("headless-write")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if resolved.Secrets.Token != "headless-token" {
+		t.Errorf("token not round-tripped; got %q", resolved.Secrets.Token)
+	}
+
+	if err := Remove("headless-write"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if sec, _ := readSecretsFile(); len(sec) != 0 {
+		t.Errorf("secrets file still has entries after Remove: %v", sec)
+	}
+}
+
 func keys[K comparable, V any](m map[K]V) []K {
 	out := make([]K, 0, len(m))
 	for k := range m {
