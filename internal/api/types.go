@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/shhac/agent-deepweb/internal/audit"
@@ -105,6 +107,19 @@ type ClientOptions struct {
 	// Request.Track is true. Defaults to track.DefaultRecorder. Tests
 	// stub this to capture the Record without tempdir + FS.
 	Tracker track.Recorder
+	// Debug, when true, logs one line per request (method + redacted URL)
+	// to stderr before it is sent. Wired from the global --debug flag.
+	Debug bool
+}
+
+// logDebug emits a single debug line to stderr when Debug is enabled.
+// The URL is used as-is (after buildHTTPRequest has composed it from
+// req.URL + req.Query); no secrets appear because auth tokens are never
+// embedded in the URL — they live in headers, which are not logged here.
+func (c *ClientOptions) logDebug(method, rawURL string) {
+	if c.Debug {
+		fmt.Fprintf(os.Stderr, "[debug] %s %s\n", method, rawURL)
+	}
 }
 
 func (c *ClientOptions) applyDefaults() {

@@ -6,10 +6,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	libcli "github.com/shhac/lib-agent-cli/cli"
+	libout "github.com/shhac/lib-agent-output"
 
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	cfg "github.com/shhac/agent-deepweb/internal/config"
@@ -55,20 +57,38 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "get <key>",
-		Short: "Print the current value of a config key",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c := cfg.Read()
-			val, src, err := cfg.Get(c, args[0])
+	getCmd := &cobra.Command{
+		Use:   "get <key>...",
+		Short: "Print the current value of one or more config keys (NDJSON by default)",
+		Args:  cobra.MinimumNArgs(1),
+	}
+	var getFormat string
+	getCmd.Flags().StringVarP(&getFormat, "format", "f", "", "Output format: json, jsonl (default jsonl)")
+	getCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if _, err := output.ParseFormat(getFormat); err != nil {
+			return shared.Fail(err)
+		}
+		c := cfg.Read()
+		resolve := func(key string) (any, error) {
+			val, src, err := cfg.Get(c, key)
 			if err != nil {
-				return shared.Fail(unknownKeyError(args[0]))
+				return nil, agenterrors.Newf(agenterrors.FixableByAgent,
+					"no setting %q", key).
+					WithHint("valid keys: see 'agent-deepweb config list-keys'")
 			}
-			output.PrintJSON(map[string]any{"key": args[0], "value": val, "source": src})
-			return nil
-		},
-	})
+			return map[string]any{"key": key, "value": val, "source": src}, nil
+		}
+		// EntityGet defaults to NDJSON when format is empty, matching the
+		// family's multi-get contract. The format flag is validated against
+		// deepweb's accept-set (ParseFormat) above before reaching here so
+		// yaml is rejected before EntityGet can accept it.
+		f := getFormat
+		if f == "" {
+			f = string(libout.FormatNDJSON)
+		}
+		return libcli.EntityGet(os.Stdout, f, args, resolve)
+	}
+	cmd.AddCommand(getCmd)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "set <key> <value>",

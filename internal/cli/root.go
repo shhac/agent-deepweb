@@ -45,6 +45,14 @@ func newRootCmd(version string) *cobra.Command {
 	})
 	root.Long = "Authenticated HTTP fetcher where profiles (auth identities) are registered by the user and referenced by name; the LLM never sees secret values."
 
+	// Override the --format usage string set by libcli.NewRoot (which
+	// advertises yaml for the family baseline). deepweb rejects yaml:
+	// its ParseFormat only accepts json, jsonl, raw, text. Correcting the
+	// usage string here keeps agent-visible --help honest.
+	if f := root.PersistentFlags().Lookup("format"); f != nil {
+		f.Usage = "Output format: json, jsonl, raw, text"
+	}
+
 	root.PersistentFlags().StringVarP(&g.Profile, "profile", "p", "", "Profile name, or 'none' for explicit anonymous (falls back to config 'default.profile')")
 
 	registerUsageCommand(root)

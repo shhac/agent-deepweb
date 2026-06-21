@@ -111,26 +111,28 @@ func TestUnset_ReportsDefaultSource(t *testing.T) {
 	}
 }
 
-// TestUnknownKey_HintListsAllKeys — malformed key names must surface
-// a hint with every registered key. The hint is generated from
-// cfg.Keys at call time, so this test also guards against drift if
-// a new key is added and unknownKeyError is forgotten.
+// TestUnknownKey_HintListsAllKeys — an unknown key must produce an
+// @unresolved record on stdout (exit 0, item-level miss) whose hint
+// mentions "list-keys" so an agent can self-correct. The hint is
+// emitted by the EntityGet resolver and lives inside the @unresolved
+// envelope rather than being bubbled as a fatal error.
 func TestUnknownKey_HintListsAllKeys(t *testing.T) {
 	setupConfigDir(t)
 
-	_, err := exec(t, "config", "get", "no.such.key")
-	if err == nil {
-		t.Fatal("expected unknown-key error")
+	out, err := exec(t, "config", "get", "no.such.key")
+	if err != nil {
+		t.Fatalf("expected exit 0 for unknown key (item-level miss), got: %v", err)
 	}
-	var apiErr *agenterrors.APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("want APIError, got %T: %v", err, err)
+	ur, ok := out["@unresolved"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected @unresolved envelope in stdout, got: %+v", out)
 	}
-	hint := apiErr.Hint
-	for _, k := range cfg.Keys {
-		if !strings.Contains(hint, k.Name) {
-			t.Errorf("unknown-key hint missing %q; hint=%q", k.Name, hint)
-		}
+	hint, _ := ur["hint"].(string)
+	if !strings.Contains(hint, "list-keys") {
+		t.Errorf("@unresolved hint should mention list-keys; hint=%q", hint)
+	}
+	if ur["fixable_by"] != "agent" {
+		t.Errorf("@unresolved fixable_by should be 'agent', got %q", ur["fixable_by"])
 	}
 }
 

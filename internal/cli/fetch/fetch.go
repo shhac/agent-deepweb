@@ -140,6 +140,7 @@ func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
 		FollowRedirects: o.followRedirects,
+		Debug:           g.Debug,
 	})
 
 	// Even on error, `resp` is non-nil for HTTP-level errors; surface whatever we have.

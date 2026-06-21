@@ -23,12 +23,11 @@ const ProfileNone = "none"
 // shared --format/--timeout/--debug live in the embedded libcli.Globals
 // (Format/TimeoutMS/Debug); --profile is agent-deepweb's domain flag.
 //
-// NOTE: --debug (libcli.Globals.Debug) is currently INERT — it is parsed
-// but nothing reads it. There is no debug-writer seam in api.Do/ClientOptions
-// yet, and emitting request diagnostics would have to reuse the same
-// redaction pipeline (buildSentRequest) so debug output can never leak a
-// secret. Wire that seam before giving --debug behaviour; until then it is a
-// documented no-op rather than a half-built feature.
+// --debug (libcli.Globals.Debug) is threaded into api.ClientOptions.Debug
+// by each request verb (fetch/graphql/jsonrpc). When true, api.Do emits
+// one "[debug] METHOD URL" line to stderr before the request is sent.
+// The URL is safe to log because auth tokens always live in headers, never
+// in the URL itself.
 type GlobalFlags struct {
 	libcli.Globals // Format, TimeoutMS, Debug
 

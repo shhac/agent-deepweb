@@ -114,6 +114,7 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
 		FollowRedirects: true,
+		Debug:           g.Debug,
 	})
 
 	envelope, parsed := buildGraphQLEnvelope(endpoint, auth, resp, o.hideRequest, o.hideResponse)

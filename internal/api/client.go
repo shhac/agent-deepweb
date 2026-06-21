@@ -75,6 +75,8 @@ func Do(ctx context.Context, req Request, opts ClientOptions) (resp *Response, o
 		return nil, agenterrors.Wrap(err, agenterrors.FixableByAgent)
 	}
 
+	opts.logDebug(httpReq.Method, httpReq.URL.String())
+
 	client := &http.Client{
 		Timeout:       opts.Timeout,
 		Jar:           jar,

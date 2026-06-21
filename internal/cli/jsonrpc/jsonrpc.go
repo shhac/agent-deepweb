@@ -84,6 +84,14 @@ type rpcResponse struct {
 }
 
 func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
+	// Validate the output format before doing any work. The local --format
+	// shadows the global persistent flag, so it must run its own check —
+	// otherwise an unknown value (e.g. yaml) would silently fall through to
+	// JSON instead of the family's fixable_by:agent correction.
+	if _, err := output.ParseFormat(shared.FirstNonEmpty(o.format, g.Format)); err != nil {
+		return shared.Fail(err)
+	}
+
 	if strings.TrimSpace(o.method) == "" {
 		return shared.Fail(agenterrors.New("--method is required", agenterrors.FixableByAgent).
 			WithHint("Pass the RPC method name, e.g. --method eth_blockNumber"))
@@ -116,6 +124,7 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 		Timeout:         timeout,
 		MaxBytes:        maxBytes,
 		FollowRedirects: true,
+		Debug:           g.Debug,
 	})
 
 	envelope, parsed := buildEnvelope(endpoint, auth, resp, o.hideRequest, o.hideResponse)
