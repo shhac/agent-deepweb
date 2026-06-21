@@ -20,7 +20,7 @@ FLAGS
   --operation-name <name>    Operation name for multi-op documents
   --timeout <ms>
   --max-size <bytes>
-  --format json|jsonl|raw|text
+  --format json|yaml|jsonl|raw|text
   -d, --debug                    Log "[debug] METHOD URL" to stderr before the request
 
 EXAMPLES

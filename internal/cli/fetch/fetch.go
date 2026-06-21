@@ -12,6 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -31,7 +33,6 @@ type opts struct {
 	timeoutMS       int
 	maxBytes        int64
 	followRedirects bool
-	format          string
 	userAgent       string
 	track           bool
 	hideRequest     bool
@@ -50,6 +51,12 @@ func Register(root *cobra.Command, globals shared.Globals) {
 		},
 	}
 	bindFlags(cmd, o)
+
+	// fetch passes the response body through, so it accepts the two
+	// body-display formats on top of the universal json|yaml|jsonl set.
+	// NewRoot's --format validator consults this and rejects raw/text
+	// elsewhere with the structured error.
+	libcli.AllowFormats(cmd, "raw", "text")
 
 	shared.RegisterUsage(cmd, "fetch", usageText)
 
@@ -70,11 +77,6 @@ func bindFlags(cmd *cobra.Command, o *opts) {
 	f.IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
 	f.Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
 	f.BoolVar(&o.followRedirects, "follow-redirects", true, "Follow redirects")
-	// Local --format deliberately shadows the global persistent --format: the
-	// request verbs additionally accept raw/text (response-body passthrough),
-	// which the global libcli format validator doesn't know about. Domain
-	// behaviour, intentional — leave it local.
-	f.StringVar(&o.format, "format", "", "Output format: json, raw, text")
 	f.StringVarP(&o.userAgent, "user-agent", "A", "", "User-Agent for this request (else credential's UA; else agent-deepweb/<version>)")
 	f.BoolVar(&o.track, "track", false, "Persist a full-fidelity record of this request/response. Envelope gains an audit_id; retrieve later with 'agent-deepweb audit show <id>'.")
 	f.BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope (saves tokens when you only care about the response)")
@@ -82,14 +84,9 @@ func bindFlags(cmd *cobra.Command, o *opts) {
 }
 
 func run(rawURL string, g *shared.GlobalFlags, o *opts) error {
-	// Validate the output format before doing any work. The local --format
-	// shadows the global persistent flag (to add raw/text), so it must run its
-	// own check — otherwise an unknown value (e.g. yaml) would silently fall
-	// through to JSON instead of the family's fixable_by:agent correction.
-	format := shared.FirstNonEmpty(o.format, g.Format)
-	if _, err := output.ParseFormat(format); err != nil {
-		return shared.Fail(err)
-	}
+	// --format is the global flag, validated command-aware in NewRoot (the
+	// universal json|yaml|jsonl plus the raw/text this verb opted into).
+	format := g.Format
 
 	profileName := shared.FirstNonEmpty(o.profile, g.Profile)
 	auth, err := shared.ResolveProfile(rawURL, profileName)

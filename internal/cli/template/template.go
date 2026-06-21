@@ -20,7 +20,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/template"
 )
 
-func Register(root *cobra.Command, _ shared.Globals) {
+func Register(root *cobra.Command, globals shared.Globals) {
 	cmd := &cobra.Command{
 		Use:     "template",
 		Aliases: []string{"tpl"},
@@ -32,7 +32,7 @@ func Register(root *cobra.Command, _ shared.Globals) {
 
 	registerList(cmd)
 	registerShow(cmd)
-	registerRun(cmd)
+	registerRun(cmd, globals)
 	registerImport(cmd)
 	registerImportOpenAPI(cmd)
 	registerImportPostman(cmd)

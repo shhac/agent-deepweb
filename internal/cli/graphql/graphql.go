@@ -8,6 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -23,7 +25,6 @@ type opts struct {
 	operationName string
 	timeoutMS     int
 	maxBytes      int64
-	format        string
 	track         bool
 	hideRequest   bool
 	hideResponse  bool
@@ -46,10 +47,13 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().StringVar(&o.operationName, "operation-name", "", "Operation name")
 	cmd.Flags().IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
-	cmd.Flags().StringVar(&o.format, "format", "", "Output format: json, raw, text")
 	cmd.Flags().BoolVar(&o.track, "track", false, "Persist a full-fidelity record of this request/response; retrieve later with 'agent-deepweb audit show <id>'")
 	cmd.Flags().BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
 	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
+
+	// Opt into raw/text response-body passthrough on top of the universal
+	// json|yaml|jsonl set; NewRoot's --format validator rejects them elsewhere.
+	libcli.AllowFormats(cmd, "raw", "text")
 
 	shared.RegisterUsage(cmd, "graphql", usageText)
 	registerImportSchema(cmd)
@@ -72,12 +76,9 @@ type gqlResponse struct {
 }
 
 func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
-	// Reject an unknown --format up front (fixable_by:agent) rather than
-	// silently degrading. The local flag shadows the global persistent one, so
-	// it needs its own validation against deepweb's accept-set.
-	if _, err := output.ParseFormat(shared.FirstNonEmpty(o.format, g.Format)); err != nil {
-		return shared.Fail(err)
-	}
+	// --format is the global flag, validated command-aware in NewRoot (the
+	// universal json|yaml|jsonl plus the raw/text this verb opted into).
+	format := g.Format
 
 	if strings.TrimSpace(o.query) == "" {
 		return shared.Fail(agenterrors.New("--query is required", agenterrors.FixableByAgent).
@@ -118,7 +119,11 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 	})
 
 	envelope, parsed := buildGraphQLEnvelope(endpoint, auth, resp, o.hideRequest, o.hideResponse)
-	output.PrintJSON(envelope)
+	if resp != nil && output.PrintBody(format, resp.Status, resp.StatusText, resp.Body, resp.AuditID) {
+		// raw/text passthrough already wrote the body; skip the envelope.
+	} else {
+		output.PrintEnvelope(envelope, format)
+	}
 
 	if err != nil {
 		return shared.Fail(err)

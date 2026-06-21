@@ -7,6 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -16,11 +18,10 @@ import (
 )
 
 // registerRun builds the `tpl run` command, the agent-facing verb.
-func registerRun(parent *cobra.Command) {
+func registerRun(parent *cobra.Command, globals shared.Globals) {
 	var params []string
 	var timeoutMS int
 	var maxBytes int64
-	var format string
 	var track, hideRequest, hideResponse bool
 
 	cmd := &cobra.Command{
@@ -28,7 +29,7 @@ func registerRun(parent *cobra.Command) {
 		Short: "Run a template with the given parameters",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTemplate(args[0], params, timeoutMS, maxBytes, format, track, hideRequest, hideResponse)
+			return runTemplate(args[0], params, timeoutMS, maxBytes, globals().Format, track, hideRequest, hideResponse)
 		},
 	}
 	// No -p shorthand: it collides with the root's persistent --profile/-p, and
@@ -36,20 +37,18 @@ func registerRun(parent *cobra.Command) {
 	cmd.Flags().StringArrayVar(&params, "param", nil, "Template parameter 'name=value' (repeatable)")
 	cmd.Flags().IntVar(&timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&maxBytes, "max-size", 0, "Max response body size in bytes")
-	cmd.Flags().StringVar(&format, "format", "", "Output format: json, raw, text")
 	cmd.Flags().BoolVar(&track, "track", false, "Persist a full-fidelity record; retrieve later with 'audit show <id>'")
 	cmd.Flags().BoolVar(&hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
 	cmd.Flags().BoolVar(&hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
+
+	// Opt into raw/text response-body passthrough on top of the universal
+	// json|yaml|jsonl set; NewRoot's --format validator rejects them elsewhere.
+	libcli.AllowFormats(cmd, "raw", "text")
+
 	parent.AddCommand(cmd)
 }
 
 func runTemplate(name string, rawParams []string, timeoutMS int, maxBytes int64, formatStr string, track, hideRequest, hideResponse bool) error {
-	// Reject an unknown --format up front (fixable_by:agent) rather than
-	// silently rendering JSON — consistent with fetch/graphql.
-	if _, err := output.ParseFormat(formatStr); err != nil {
-		return shared.Fail(err)
-	}
-
 	tpl, err := template.Get(name)
 	if err != nil {
 		return shared.Fail(template.ClassifyLookupErr(err, name))

@@ -46,7 +46,7 @@ FLAGS
   --timeout <ms>                 Per-request timeout
   --max-size <bytes>             Cap response body size (default 10 MiB)
   --follow-redirects             Follow redirects (default: true)
-  --format json|jsonl|raw|text   Output format (default json)
+  --format json|yaml|jsonl|raw|text   Output format (default json)
   -d, --debug                    Log "[debug] METHOD URL" to stderr before the request
   --user-agent <s>               Per-request UA; beats profile UA and config default
   -A <s>                         Short form for --user-agent

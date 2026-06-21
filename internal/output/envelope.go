@@ -2,9 +2,7 @@ package output
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -123,41 +121,32 @@ func BuildHTTPEnvelope(in EnvelopeIn) map[string]any {
 	return env
 }
 
-// RenderResponse handles the raw/text/json output-format switch shared
-// by fetch and tpl. Bails on a nil resp; otherwise writes one of:
-//   - format=raw   → response body bytes directly to stdout
-//   - format=text  → "HTTP <status> <text>\n\n" + body bytes
-//   - format=json  → JSON envelope built via BuildHTTPEnvelope, with
-//     `extras` merged in (e.g. {"new_cookies": ...} from fetch, or
-//     {"template": <name>} from tpl).
+// RenderResponse handles the output-format switch shared by the request
+// verbs. The format string is the global --format value (already validated
+// command-aware by NewRoot via AllowFormats, so it is one of
+// json|yaml|jsonl|raw|text or empty). Bails on a nil resp; otherwise writes
+// one of:
+//   - format=raw          → response body bytes directly to stdout
+//   - format=text         → "HTTP <status> <text>\n\n" + body bytes
+//   - json | yaml | jsonl → envelope built via BuildHTTPEnvelope, rendered via
+//     out.Print (json pretty, jsonl one compact line, yaml via the registered
+//     encoder), with `extras` merged in (e.g. {"new_cookies": ...} from fetch,
+//     or {"template": <name>} from tpl).
 //
-// Centralising this means the JSON envelope shape, the text-format
-// preamble, and the raw-bytes fallback evolve in one place.
+// Centralising this means the envelope shape, the text-format preamble, and the
+// raw-bytes fallback evolve in one place.
 //
 // When --track was used, the audit ID is also written to stderr so
 // it's visible in raw/text modes where the envelope isn't printed.
 func RenderResponse(in EnvelopeIn, status int, statusText string, body []byte, format string, extras map[string]any) {
-	f, _ := ParseFormat(format)
-	switch f {
-	case FormatRaw:
-		_, _ = os.Stdout.Write(body)
-		if in.AuditID != "" {
-			fmt.Fprintln(os.Stderr, "audit_id:", in.AuditID)
-		}
-		return
-	case FormatText:
-		fmt.Printf("HTTP %d %s\n\n", status, statusText)
-		_, _ = os.Stdout.Write(body)
-		if in.AuditID != "" {
-			fmt.Fprintln(os.Stderr, "audit_id:", in.AuditID)
-		}
+	if PrintBody(format, status, statusText, body, in.AuditID) {
 		return
 	}
 	env := BuildHTTPEnvelope(in)
 	for k, v := range extras {
 		env[k] = v
 	}
-	PrintJSON(env)
+	PrintEnvelope(env, format)
 }
 
 // RenderBody decodes JSON bodies into native values so the envelope stays

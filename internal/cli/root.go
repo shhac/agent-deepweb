@@ -28,10 +28,10 @@ func newRootCmd(version string) *cobra.Command {
 		Short:   "curl-with-auth for AI agents",
 		Version: version,
 		Globals: &g.Globals,
-		// Documentation-only: deepweb's own output.ResolveFormat governs the
-		// runtime default (empty --format → json). deepweb is a request tool
-		// (fetch/graphql/jsonrpc), not a list-default CLI, so the default is
-		// JSON, not NDJSON.
+		// deepweb is a request tool (fetch/graphql/jsonrpc), not a list-default
+		// CLI, so the default is JSON, not NDJSON. The request verbs render the
+		// envelope via out.Print, which honours this default when --format is
+		// empty.
 		DefaultFormat: out.FormatJSON,
 		// Precedence for --profile: flag > config.default.profile > empty.
 		// No env var — config replaces AGENT_DEEPWEB_PROFILE in v0.4. Runs in
@@ -45,13 +45,9 @@ func newRootCmd(version string) *cobra.Command {
 	})
 	root.Long = "Authenticated HTTP fetcher where profiles (auth identities) are registered by the user and referenced by name; the LLM never sees secret values."
 
-	// Override the --format usage string set by libcli.NewRoot (which
-	// advertises yaml for the family baseline). deepweb rejects yaml:
-	// its ParseFormat only accepts json, jsonl, raw, text. Correcting the
-	// usage string here keeps agent-visible --help honest.
-	if f := root.PersistentFlags().Lookup("format"); f != nil {
-		f.Usage = "Output format: json, jsonl, raw, text"
-	}
+	// The global --format usage from libcli.NewRoot ("json, yaml, jsonl") is now
+	// accurate: deepweb renders all three. The request verbs additionally accept
+	// raw/text (opted in via libcli.AllowFormats); that's documented per-verb.
 
 	root.PersistentFlags().StringVarP(&g.Profile, "profile", "p", "", "Profile name, or 'none' for explicit anonymous (falls back to config 'default.profile')")
 

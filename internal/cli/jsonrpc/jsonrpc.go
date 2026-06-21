@@ -19,6 +19,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-deepweb/internal/api"
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	"github.com/shhac/agent-deepweb/internal/credential"
@@ -35,7 +37,6 @@ type opts struct {
 	notify       bool
 	timeoutMS    int
 	maxBytes     int64
-	format       string
 	track        bool
 	hideRequest  bool
 	hideResponse bool
@@ -59,10 +60,13 @@ func Register(root *cobra.Command, globals shared.Globals) {
 	cmd.Flags().BoolVar(&o.notify, "notify", false, "Send as a notification (no id, server does not reply)")
 	cmd.Flags().IntVar(&o.timeoutMS, "timeout", 0, "Request timeout in ms")
 	cmd.Flags().Int64Var(&o.maxBytes, "max-size", 0, "Max response body size in bytes")
-	cmd.Flags().StringVar(&o.format, "format", "", "Output format: json, raw, text")
 	cmd.Flags().BoolVar(&o.track, "track", false, "Persist a full-fidelity record; retrieve later with 'agent-deepweb audit show <id>'")
 	cmd.Flags().BoolVar(&o.hideRequest, "hide-request", false, "Omit the 'request' field from the envelope")
 	cmd.Flags().BoolVar(&o.hideResponse, "hide-response", false, "Omit response headers/body from the envelope")
+
+	// Opt into raw/text response-body passthrough on top of the universal
+	// json|yaml|jsonl set; NewRoot's --format validator rejects them elsewhere.
+	libcli.AllowFormats(cmd, "raw", "text")
 
 	shared.RegisterUsage(cmd, "jsonrpc", usageText)
 
@@ -84,13 +88,9 @@ type rpcResponse struct {
 }
 
 func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
-	// Validate the output format before doing any work. The local --format
-	// shadows the global persistent flag, so it must run its own check —
-	// otherwise an unknown value (e.g. yaml) would silently fall through to
-	// JSON instead of the family's fixable_by:agent correction.
-	if _, err := output.ParseFormat(shared.FirstNonEmpty(o.format, g.Format)); err != nil {
-		return shared.Fail(err)
-	}
+	// --format is the global flag, validated command-aware in NewRoot (the
+	// universal json|yaml|jsonl plus the raw/text this verb opted into).
+	format := g.Format
 
 	if strings.TrimSpace(o.method) == "" {
 		return shared.Fail(agenterrors.New("--method is required", agenterrors.FixableByAgent).
@@ -128,7 +128,11 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 	})
 
 	envelope, parsed := buildEnvelope(endpoint, auth, resp, o.hideRequest, o.hideResponse)
-	output.PrintJSON(envelope)
+	if resp != nil && output.PrintBody(format, resp.Status, resp.StatusText, resp.Body, resp.AuditID) {
+		// raw/text passthrough already wrote the body; skip the envelope.
+	} else {
+		output.PrintEnvelope(envelope, format)
+	}
 
 	if err != nil {
 		return shared.Fail(err)

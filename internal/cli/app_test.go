@@ -106,21 +106,18 @@ func TestExecute_CobraErrorsRenderStructured(t *testing.T) {
 	}
 }
 
-// TestUnknownFormat_RejectedPerVerb — the request verbs register a LOCAL
-// --format that shadows the root's persistent --format (to add raw/text). That
-// shadowing previously bypassed validation, so an unknown value (e.g. yaml)
-// silently fell through to JSON with exit 0 instead of the family's
-// fixable_by:agent correction. Each verb now validates the format up front,
-// before any network work — so this test needs no server: the error fires
-// first. Mirrors libcli.Run's single render of the bubbled error.
+// TestUnknownFormat_RejectedPerVerb — a genuinely-bogus --format on a request
+// verb is rejected up front (in NewRoot's PersistentPreRunE, before any network
+// work) with the family's fixable_by:agent correction, which now lists the
+// universal set plus the raw/text the verb opted into via AllowFormats.
 func TestUnknownFormat_RejectedPerVerb(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
 	}{
-		{"fetch", []string{"fetch", "http://127.0.0.1:1/x", "--profile", "none", "--format", "yaml"}},
-		{"graphql", []string{"graphql", "http://127.0.0.1:1/x", "--profile", "none", "--query", "{x}", "--format", "yaml"}},
-		{"template run", []string{"template", "run", "anything", "--format", "yaml"}},
+		{"fetch", []string{"fetch", "http://127.0.0.1:1/x", "--profile", "none", "--format", "bogus"}},
+		{"graphql", []string{"graphql", "http://127.0.0.1:1/x", "--profile", "none", "--query", "{x}", "--format", "bogus"}},
+		{"template run", []string{"template", "run", "anything", "--format", "bogus"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -142,10 +139,52 @@ func TestUnknownFormat_RejectedPerVerb(t *testing.T) {
 			if env["fixable_by"] != "agent" {
 				t.Errorf("unknown format should be fixable_by:agent, got %v", env["fixable_by"])
 			}
-			if msg, _ := env["error"].(string); !strings.Contains(msg, "unknown format") {
+			msg, _ := env["error"].(string)
+			if !strings.Contains(msg, "unknown format") {
 				t.Errorf("error should mention unknown format, got %q", msg)
 			}
+			// The correction must advertise the universal set plus the verb's
+			// opted-in extras.
+			for _, want := range []string{"json", "yaml", "jsonl", "raw", "text"} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error should list %q in the accepted set, got %q", want, msg)
+				}
+			}
 		})
+	}
+}
+
+// TestExtraFormat_RejectedOnNonRequestVerb — raw/text are opted into only on the
+// request verbs. On a command that did NOT call AllowFormats (e.g. profile
+// list), NewRoot rejects raw with the structured fixable_by:agent error.
+func TestExtraFormat_RejectedOnNonRequestVerb(t *testing.T) {
+	root := newRootCmd("test")
+	root.SetArgs([]string{"profile", "list", "--format", "raw"})
+
+	execErr := root.Execute()
+	if execErr == nil {
+		t.Fatal("expected --format raw to be rejected on 'profile list'")
+	}
+
+	var buf bytes.Buffer
+	output.WriteError(&buf, execErr)
+	var env map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &env); err != nil {
+		t.Fatalf("output was not JSON: %q", buf.Bytes())
+	}
+	if env["fixable_by"] != "agent" {
+		t.Errorf("rejecting raw should be fixable_by:agent, got %v", env["fixable_by"])
+	}
+	msg, _ := env["error"].(string)
+	if !strings.Contains(msg, "unknown format") {
+		t.Errorf("error should mention unknown format, got %q", msg)
+	}
+	// raw must NOT be advertised in the accepted set here — it isn't allowed on
+	// this command. Inspect the "expected: ..." list, not the whole message
+	// (which echoes the rejected value "raw").
+	_, expected, _ := strings.Cut(msg, "expected:")
+	if strings.Contains(expected, "raw") || strings.Contains(expected, "text") {
+		t.Errorf("raw/text should not be listed as accepted on profile list, got %q", msg)
 	}
 }
 

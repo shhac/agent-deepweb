@@ -65,7 +65,8 @@ COMMON WORKFLOWS
 GLOBAL FLAGS
   --profile <name>                   Profile name, or 'none' for explicit anonymous
                                      (falls back to config 'default.profile')
-  --format json|jsonl|raw|text       Output format (default: json)
+  --format json|yaml|jsonl           Output format (default: json). On request verbs
+                                     (fetch/graphql/jsonrpc/template run) also: raw|text.
   --timeout <ms>                     Request timeout in ms (falls back to config 'default.timeout-ms')
   -d, --debug                        Log one "[debug] METHOD URL" line to stderr before each
                                      HTTP request. Safe to use: auth tokens live in headers,
