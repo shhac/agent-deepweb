@@ -21,6 +21,7 @@ FLAGS
   --timeout <ms>
   --max-size <bytes>
   --format json|jsonl|raw|text
+  -d, --debug                    Log "[debug] METHOD URL" to stderr before the request
 
 EXAMPLES
   agent-deepweb graphql https://api.github.com/graphql --profile github \

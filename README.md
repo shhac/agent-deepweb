@@ -208,6 +208,16 @@ Per-command `usage` subcommands exist for all top-level verbs.
 --format jsonl    Line-delimited JSON (where applicable).
 ```
 
+## Debug flag
+
+`-d` / `--debug` (global, applies to fetch / graphql / jsonrpc) logs one line to stderr before each HTTP request:
+
+```
+[debug] POST https://api.example.com/graphql
+```
+
+Auth tokens live in headers, never in the URL, so the URL is safe to log.
+
 ## Config
 
 Persistent user config is managed via `agent-deepweb config {list-keys,get,set,unset}` and persisted at `~/.config/agent-deepweb/config.json`. Keys:
@@ -220,6 +230,8 @@ Persistent user config is managed via `agent-deepweb config {list-keys,get,set,u
 - `track.ttl` — how long tracked records live (built-in 168h / 7 days)
 
 Precedence at call time: **per-invocation flag > config value > built-in default**.
+
+`config get` accepts one or more keys (`config get <key>...`) and emits NDJSON by default — one line per key, or `{"@unresolved":{...}}` for unknown keys (exit 0). Pass `--format json` for a single envelope.
 
 ## Environment variables
 

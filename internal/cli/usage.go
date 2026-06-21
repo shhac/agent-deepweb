@@ -67,6 +67,9 @@ GLOBAL FLAGS
                                      (falls back to config 'default.profile')
   --format json|jsonl|raw|text       Output format (default: json)
   --timeout <ms>                     Request timeout in ms (falls back to config 'default.timeout-ms')
+  -d, --debug                        Log one "[debug] METHOD URL" line to stderr before each
+                                     HTTP request. Safe to use: auth tokens live in headers,
+                                     never in the URL.
 
 PER-VERB FLAGS (fetch / graphql / jsonrpc only)
   --cookiejar <path>                 Bring-your-own cookie jar (plaintext JSON file).

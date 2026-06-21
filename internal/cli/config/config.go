@@ -151,7 +151,7 @@ const usageText = `config — persistent user config
 
 USAGE
   agent-deepweb config list-keys
-  agent-deepweb config get <key>
+  agent-deepweb config get <key>...
   agent-deepweb config set <key> <value>
   agent-deepweb config unset <key>
 
@@ -160,6 +160,15 @@ SUMMARY
   at call time is: per-invocation flag > config value > built-in default.
   Only AGENT_DEEPWEB_CONFIG_DIR remains as an environment variable (it
   points at the config dir itself, used by tests).
+
+GET (single + multi)
+  'config get <key>...' accepts one or more keys and returns one result per
+  key, in input order. Default output is NDJSON: one line per key —
+  {"key":"...","value":"...","source":"..."} for known keys, or
+  {"@unresolved":{"id":"<key>","reason":"no setting \"<key>\"","fixable_by":"agent"}}
+  for unknown keys. Pass --format json for a single collapsed envelope.
+  Item-level misses (unknown key) stay on stdout and exit 0; only a
+  command-level failure (bad flag) goes to stderr with exit 1.
 
 KEYS
   default.timeout-ms   Default request timeout (ms)            [built-in: 30000]

@@ -23,7 +23,8 @@ FLAGS
   --notify                    Send as a notification (no id, server won't reply)
   --timeout <ms>
   --max-size <bytes>
-  --format json|raw|text
+  --format json|jsonl|raw|text
+  -d, --debug                 Log "[debug] METHOD URL" to stderr before the request
   --track                     Persist a full-fidelity record (use 'audit show <id>')
   --hide-request              Omit 'request' block from envelope
   --hide-response             Omit response headers/body (keep status + profile)
