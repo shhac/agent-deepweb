@@ -138,8 +138,8 @@ func BuildHTTPEnvelope(in EnvelopeIn) map[string]any {
 //
 // When --track was used, the audit ID is also written to stderr so
 // it's visible in raw/text modes where the envelope isn't printed.
-func RenderResponse(in EnvelopeIn, status int, statusText string, body []byte, format string, extras map[string]any) {
-	if PrintBody(format, status, statusText, body, in.AuditID) {
+func RenderResponse(in EnvelopeIn, statusText string, body []byte, format string, extras map[string]any) {
+	if PrintBody(format, statusText, body, in.AuditID) {
 		return
 	}
 	env := BuildHTTPEnvelope(in)

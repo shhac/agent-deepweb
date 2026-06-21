@@ -71,16 +71,17 @@ func PrintEnvelope(env any, format string) {
 }
 
 // PrintBody writes a response body for the raw/text passthrough formats shared
-// by all request verbs. raw → body bytes; text → "HTTP <status> <text>\n\n" +
-// body. The audit ID (when --track) goes to stderr so it survives these modes
-// where the envelope isn't printed. Returns false when format is neither raw
-// nor text, so the caller falls through to its structured renderer.
-func PrintBody(format string, status int, statusText string, body []byte, auditID string) bool {
+// by all request verbs. raw → body bytes; text → "HTTP <status-line>\n\n" +
+// body, where statusText is Go's full status string (e.g. "200 OK"). The audit
+// ID (when --track) goes to stderr so it survives these modes where the envelope
+// isn't printed. Returns false when format is neither raw nor text, so the caller
+// falls through to its structured renderer.
+func PrintBody(format, statusText string, body []byte, auditID string) bool {
 	switch format {
 	case "raw":
 		_, _ = os.Stdout.Write(body)
 	case "text":
-		_, _ = fmt.Fprintf(os.Stdout, "HTTP %d %s\n\n", status, statusText)
+		_, _ = fmt.Fprintf(os.Stdout, "HTTP %s\n\n", statusText)
 		_, _ = os.Stdout.Write(body)
 	default:
 		return false

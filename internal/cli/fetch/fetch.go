@@ -172,5 +172,5 @@ func writeResponse(rawURL string, auth *credential.Resolved, resp *api.Response,
 		AuditID:          resp.AuditID,
 		HideRequest:      hideRequest,
 		HideResponse:     hideResponse,
-	}, resp.Status, resp.StatusText, resp.Body, format, extras)
+	}, resp.StatusText, resp.Body, format, extras)
 }

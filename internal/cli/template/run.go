@@ -177,6 +177,6 @@ func writeOutput(name, expandedURL string, auth *credential.Resolved, resp *api.
 		AuditID:          resp.AuditID,
 		HideRequest:      hideRequest,
 		HideResponse:     hideResponse,
-	}, resp.Status, resp.StatusText, resp.Body, formatStr,
+	}, resp.StatusText, resp.Body, formatStr,
 		map[string]any{"template": name})
 }

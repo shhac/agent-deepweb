@@ -128,7 +128,7 @@ func run(endpoint string, g *shared.GlobalFlags, o *opts) error {
 	})
 
 	envelope, parsed := buildEnvelope(endpoint, auth, resp, o.hideRequest, o.hideResponse)
-	if resp != nil && output.PrintBody(format, resp.Status, resp.StatusText, resp.Body, resp.AuditID) {
+	if resp != nil && output.PrintBody(format, resp.StatusText, resp.Body, resp.AuditID) {
 		// raw/text passthrough already wrote the body; skip the envelope.
 	} else {
 		output.PrintEnvelope(envelope, format)
