@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/shhac/lib-agent-cli v0.12.0
-	github.com/shhac/lib-agent-mcp v0.6.0
+	github.com/shhac/lib-agent-mcp v0.7.0
 	github.com/shhac/lib-agent-output v0.7.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.53.0

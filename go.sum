@@ -14,8 +14,8 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/shhac/lib-agent-cli v0.12.0 h1:noumMzXhfmShfA7KNhUeZBF0NNG9QZ8j2ofVEBlvmbI=
 github.com/shhac/lib-agent-cli v0.12.0/go.mod h1:8yI+z/swlq+NI0YIbCd3uK9CDINdCKIfRuKeBRiGZqw=
-github.com/shhac/lib-agent-mcp v0.6.0 h1:E8QZnXMF3rwc7nMwyXgkWNPFc4OdmEFrgYR+mKWMnHU=
-github.com/shhac/lib-agent-mcp v0.6.0/go.mod h1:TdkQ1/sY3h6sM78MBTqwaZawWfYcOg/xZaeTqmnjmuY=
+github.com/shhac/lib-agent-mcp v0.7.0 h1:p4cbpDoi2eZBfw3TtMfXfbitzq8xSOhMPnUEsnNk1aI=
+github.com/shhac/lib-agent-mcp v0.7.0/go.mod h1:TdkQ1/sY3h6sM78MBTqwaZawWfYcOg/xZaeTqmnjmuY=
 github.com/shhac/lib-agent-output v0.7.0 h1:Uh6F2CGnIlgwH71mrgxx3NKknmEaP78YcGFSR47FEv8=
 github.com/shhac/lib-agent-output v0.7.0/go.mod h1:YyO2KSKAZxRrCJGanfB6qAyV0DvG+GSsZNShQoLslT0=
 github.com/spf13/cobra v1.10.2 h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=
