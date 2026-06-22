@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
+	agentmcp "github.com/shhac/lib-agent-mcp"
 	libcli "github.com/shhac/lib-agent-cli/cli"
 	out "github.com/shhac/lib-agent-output"
 
@@ -60,6 +61,11 @@ func newRootCmd(version string) *cobra.Command {
 	audit.Register(root, allGlobals)
 	templatecli.Register(root, allGlobals)
 	configcli.Register(root, allGlobals)
+
+	// Expose the whole command tree as an MCP server (added last, so it reflects
+	// the complete tree). --color/--expose are output-shaping, irrelevant to a
+	// tool call, so hide them from the generated schemas.
+	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose")))
 
 	return root
 }
