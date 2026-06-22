@@ -3,16 +3,19 @@ module github.com/shhac/agent-deepweb
 go 1.26
 
 require (
-	github.com/shhac/lib-agent-cli v0.9.1
-	github.com/shhac/lib-agent-output v0.5.3
+	github.com/shhac/lib-agent-cli v0.11.0
+	github.com/shhac/lib-agent-output v0.6.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.53.0
 )
 
 require (
+	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
