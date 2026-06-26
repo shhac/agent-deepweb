@@ -274,4 +274,4 @@ See [AGENTS.md](AGENTS.md) for the repo layout, testing strategy, and guidance o
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+PolyForm Perimeter License 1.0.0 — see [LICENSE](LICENSE).
