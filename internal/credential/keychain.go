@@ -10,6 +10,10 @@ import (
 
 const keychainService = "app.paulie.agent-deepweb"
 
+// MCPKeychainService is the Keychain service for the MCP server's local-OAuth
+// secrets — the CLI's service plus a ".mcp" namespace, separate from the API creds.
+func MCPKeychainService() string { return keychainService + ".mcp" }
+
 // SecretBackend is the abstraction over "where does the Secrets blob
 // live?". On macOS the default is the system Keychain; everywhere else
 // (and in tests) it's a noop that reports Available()==false so Store

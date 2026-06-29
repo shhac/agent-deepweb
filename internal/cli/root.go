@@ -18,6 +18,7 @@ import (
 	"github.com/shhac/agent-deepweb/internal/cli/shared"
 	templatecli "github.com/shhac/agent-deepweb/internal/cli/template"
 	"github.com/shhac/agent-deepweb/internal/config"
+	"github.com/shhac/agent-deepweb/internal/credential"
 )
 
 func newRootCmd(version string) *cobra.Command {
@@ -72,7 +73,8 @@ func newRootCmd(version string) *cobra.Command {
 	exposeGroups(root,
 		"audit", "fetch", "graphql", "jar", "jsonrpc", "login", "template")
 
-	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose")))
+	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose"),
+		agentmcp.WithOAuthKeyringService(credential.MCPKeychainService())))
 
 	return root
 }
