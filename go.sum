@@ -5,6 +5,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
 github.com/godbus/dbus/v5 v5.2.2/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
+github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
+github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/mattn/go-isatty v0.0.22 h1:j8l17JJ9i6VGPUFUYoTUKPSgKe/83EYU2zBC7YNKMw4=
@@ -14,12 +16,12 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/shhac/lib-agent-cli v0.16.0 h1:ICP7Ngj15Q9BdeNvKpnh6bH1siW0AaF8nG4P+rYOVp0=
 github.com/shhac/lib-agent-cli v0.16.0/go.mod h1:c6Ajjn/hD0WpERhniN96xCDsbkt49ztQm1ERlqAZMVw=
-github.com/shhac/lib-agent-mcp v0.7.0 h1:p4cbpDoi2eZBfw3TtMfXfbitzq8xSOhMPnUEsnNk1aI=
-github.com/shhac/lib-agent-mcp v0.7.0/go.mod h1:TdkQ1/sY3h6sM78MBTqwaZawWfYcOg/xZaeTqmnjmuY=
-github.com/shhac/lib-agent-output v0.8.0 h1:tVjP6P8mU9RL4MR0FttK9cWQnD3SS08LEgP2PTVNH4M=
-github.com/shhac/lib-agent-output v0.8.0/go.mod h1:YyO2KSKAZxRrCJGanfB6qAyV0DvG+GSsZNShQoLslT0=
-github.com/shhac/lib-agent-output v0.9.0 h1:CDWE/rwVD1brtPbVDmQTQR7YL3ofYCW5lveivO/pEBk=
-github.com/shhac/lib-agent-output v0.9.0/go.mod h1:YyO2KSKAZxRrCJGanfB6qAyV0DvG+GSsZNShQoLslT0=
+github.com/shhac/lib-agent-keyring v0.1.1 h1:cAwFr0UzlQ0xsgO0zY607lmwhvSamPN6Tp1DCNJO7hg=
+github.com/shhac/lib-agent-keyring v0.1.1/go.mod h1:nTk+YfRDc2dc8Nghd1o9w4c40xU8Pqx/UgToN0yGvZ8=
+github.com/shhac/lib-agent-mcp v0.10.0 h1:KXFBDr+0rnucu3vpdXZWRt4ooE/9H6pjFvzxnwMsZcM=
+github.com/shhac/lib-agent-mcp v0.10.0/go.mod h1:Hx/X1hJagJP7HDt72hPd4yeoaEggLuH9eWQzmovVOAo=
+github.com/shhac/lib-agent-output v0.10.0 h1:m/o7/uxf3FLS7M+qcb4x+socjc7hEsvQM+tJilh2+7Y=
+github.com/shhac/lib-agent-output v0.10.0/go.mod h1:YyO2KSKAZxRrCJGanfB6qAyV0DvG+GSsZNShQoLslT0=
 github.com/spf13/cobra v1.10.2 h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=
 github.com/spf13/cobra v1.10.2/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiTUUS4=
 github.com/spf13/pflag v1.0.9 h1:9exaQaMOCwffKiiiYk6/BndUBv+iRViNW+4lEMi0PvY=
