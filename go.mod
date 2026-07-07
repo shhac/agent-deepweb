@@ -3,7 +3,7 @@ module github.com/shhac/agent-deepweb
 go 1.26
 
 require (
-	github.com/shhac/lib-agent-cli v0.16.0
+	github.com/shhac/lib-agent-cli v0.19.0
 	github.com/shhac/lib-agent-mcp v0.11.0
 	github.com/shhac/lib-agent-output v0.10.0
 	github.com/spf13/cobra v1.10.2
