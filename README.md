@@ -239,9 +239,15 @@ Precedence at call time: **per-invocation flag > config value > built-in default
 AGENT_DEEPWEB_CONFIG_DIR         Override ~/.config/agent-deepweb (useful in tests).
 ```
 
-## Claude Code skill
+## Claude Code / AI agent skill
 
-`skills/agent-deepweb/SKILL.md` ships with the repo. Configure your harness to allowlist these commands for the LLM:
+```bash
+npx skills add shhac/agent-skills --skill agent-deepweb --global
+```
+
+Installs the `agent-deepweb` skill globally so Claude Code (and other AI agents) can discover and use it automatically. It ships from [`shhac/agent-skills`](https://github.com/shhac/agent-skills) — the whole family's skills in one repo, so `npx skills update` checks a single source no matter how many you use. Want several at once? Run `npx skills add shhac/agent-skills --global` and pick from the list.
+
+Configure your harness to allowlist these commands for the LLM:
 
 ```
 agent-deepweb usage
