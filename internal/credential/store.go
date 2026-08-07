@@ -1,11 +1,11 @@
 package credential
 
 import (
-	"encoding/json"
-	"os"
+	"errors"
 	"path/filepath"
 
 	"github.com/shhac/agent-deepweb/internal/config"
+	"github.com/shhac/lib-agent-cli/creds"
 )
 
 func indexPath() string {
@@ -16,16 +16,31 @@ func secretsFilePath() string {
 	return filepath.Join(config.ConfigDir(), "credentials.secrets.json")
 }
 
+// indexStore and secretsStore are the two backing files: 0600 writes into
+// a 0700 parent, replacement by rename so a reader never sees a
+// half-written document, and Update for a serialized read-modify-write.
+//
+// Both used to be hand-rolled with os.ReadFile/os.WriteFile, which carried
+// a lost-update race: two concurrent invocations each built their write
+// from a snapshot taken before the other landed. For the index that is
+// worse than an ordinary lost write — the secret it pointed at is still in
+// the keychain, but nothing references it any more, so `profile list`
+// can't show it and `profile remove` can't look it up to revoke it.
+//
+// They are separate locks. Every path that needs both takes the index lock
+// first and the secrets lock inside it; keep that order or the two can
+// deadlock against each other.
+func indexStore() creds.Store   { return creds.Store{Path: indexPath()} }
+func secretsStore() creds.Store { return creds.Store{Path: secretsFilePath()} }
+
+// errSkipWrite lets a mutate callback decline to persist anything without
+// the update helpers treating it as a real failure — for the cases that
+// deliberately wrote nothing before this change.
+var errSkipWrite = errors.New("credential: skip write")
+
 func readIndex() (map[string]indexEntry, error) {
-	data, err := os.ReadFile(indexPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]indexEntry{}, nil
-		}
-		return nil, err
-	}
-	var m map[string]indexEntry
-	if err := json.Unmarshal(data, &m); err != nil {
+	m := map[string]indexEntry{}
+	if err := indexStore().Load(&m); err != nil {
 		return nil, err
 	}
 	if m == nil {
@@ -34,28 +49,27 @@ func readIndex() (map[string]indexEntry, error) {
 	return m, nil
 }
 
-func writeIndex(m map[string]indexEntry) error {
-	dir := config.ConfigDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+// updateIndex applies mutate to the credential index under one exclusive
+// lock spanning load, mutate and save. Returning an error from mutate
+// aborts without writing, which is what keeps a not-found lookup from
+// rewriting the file.
+func updateIndex(mutate func(m map[string]indexEntry) error) error {
+	m := map[string]indexEntry{}
+	err := indexStore().Update(&m, func() error {
+		if m == nil {
+			m = map[string]indexEntry{}
+		}
+		return mutate(m)
+	})
+	if errors.Is(err, errSkipWrite) {
+		return nil
 	}
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(indexPath(), append(data, '\n'), 0o600)
+	return err
 }
 
 func readSecretsFile() (map[string]Secrets, error) {
-	data, err := os.ReadFile(secretsFilePath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]Secrets{}, nil
-		}
-		return nil, err
-	}
-	var m map[string]Secrets
-	if err := json.Unmarshal(data, &m); err != nil {
+	m := map[string]Secrets{}
+	if err := secretsStore().Load(&m); err != nil {
 		return nil, err
 	}
 	if m == nil {
@@ -64,16 +78,21 @@ func readSecretsFile() (map[string]Secrets, error) {
 	return m, nil
 }
 
-func writeSecretsFile(m map[string]Secrets) error {
-	dir := config.ConfigDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+// updateSecretsFile is updateIndex's counterpart for the file-fallback
+// secrets store. Only ever called from inside the index lock — see the
+// ordering note on indexStore.
+func updateSecretsFile(mutate func(m map[string]Secrets) error) error {
+	m := map[string]Secrets{}
+	err := secretsStore().Update(&m, func() error {
+		if m == nil {
+			m = map[string]Secrets{}
+		}
+		return mutate(m)
+	})
+	if errors.Is(err, errSkipWrite) {
+		return nil
 	}
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(secretsFilePath(), append(data, '\n'), 0o600)
+	return err
 }
 
 // Store persists a new or updated credential. Secrets are written to the
@@ -84,49 +103,49 @@ func writeSecretsFile(m map[string]Secrets) error {
 // profile already has one stored, the existing key is preserved (so
 // profile mutations don't invalidate the jar). If neither has a key,
 // a fresh one is generated.
+//
+// The whole body runs inside the index lock, so the keychain write and the
+// index entry that points at it land together: a concurrent writer can no
+// longer erase the entry between the two and strand the secret.
 func Store(c Credential, s Secrets) (storage string, err error) {
-	idx, err := readIndex()
-	if err != nil {
-		return "", err
-	}
-	if err := provisionJarKey(c.Name, &s, idx); err != nil {
-		return "", err
-	}
-	provisionPassphrase(c, &s)
-	entry := entryFromCredential(c)
-
-	if DefaultBackend.Available() {
-		if err := DefaultBackend.Store(c.Name, s); err == nil {
-			entry.KeychainManaged = true
-			idx[c.Name] = entry
-			if err := writeIndex(idx); err != nil {
-				return "", err
-			}
-			// If a prior file-backed secret existed, clean it up.
-			if sec, err := readSecretsFile(); err == nil {
-				if _, ok := sec[c.Name]; ok {
-					delete(sec, c.Name)
-					_ = writeSecretsFile(sec)
-				}
-			}
-			return "keychain", nil
+	if err := updateIndex(func(idx map[string]indexEntry) error {
+		if err := provisionJarKey(c.Name, &s, idx); err != nil {
+			return err
 		}
-	}
+		provisionPassphrase(c, &s)
+		entry := entryFromCredential(c)
 
-	// File fallback.
-	sec, err := readSecretsFile()
-	if err != nil {
+		if DefaultBackend.Available() {
+			if err := DefaultBackend.Store(c.Name, s); err == nil {
+				entry.KeychainManaged = true
+				idx[c.Name] = entry
+				// If a prior file-backed secret existed, clean it up.
+				_ = updateSecretsFile(func(sec map[string]Secrets) error {
+					if _, ok := sec[c.Name]; !ok {
+						return errSkipWrite
+					}
+					delete(sec, c.Name)
+					return nil
+				})
+				storage = "keychain"
+				return nil
+			}
+		}
+
+		// File fallback.
+		if err := updateSecretsFile(func(sec map[string]Secrets) error {
+			sec[c.Name] = s
+			return nil
+		}); err != nil {
+			return err
+		}
+		idx[c.Name] = entry
+		storage = "file"
+		return nil
+	}); err != nil {
 		return "", err
 	}
-	sec[c.Name] = s
-	if err := writeSecretsFile(sec); err != nil {
-		return "", err
-	}
-	idx[c.Name] = entry
-	if err := writeIndex(idx); err != nil {
-		return "", err
-	}
-	return "file", nil
+	return storage, nil
 }
 
 // provisionJarKey ensures s.JarKey is populated before Store persists.
@@ -169,25 +188,23 @@ func provisionPassphrase(c Credential, s *Secrets) {
 // profile's jar directory (cookies, encrypted state). A profile gone
 // from the index leaves nothing behind.
 func Remove(name string) error {
-	idx, err := readIndex()
-	if err != nil {
-		return err
-	}
-	e, ok := idx[name]
-	if !ok {
-		return &NotFoundError{Name: name}
-	}
-	if e.KeychainManaged {
-		DefaultBackend.Delete(name)
-	} else {
-		if sec, err := readSecretsFile(); err == nil {
-			delete(sec, name)
-			_ = writeSecretsFile(sec)
+	return updateIndex(func(idx map[string]indexEntry) error {
+		e, ok := idx[name]
+		if !ok {
+			return &NotFoundError{Name: name}
 		}
-	}
-	_ = ClearJarTree(name)
-	delete(idx, name)
-	return writeIndex(idx)
+		if e.KeychainManaged {
+			DefaultBackend.Delete(name)
+		} else {
+			_ = updateSecretsFile(func(sec map[string]Secrets) error {
+				delete(sec, name)
+				return nil
+			})
+		}
+		_ = ClearJarTree(name)
+		delete(idx, name)
+		return nil
+	})
 }
 
 // loadStoredSecrets fetches the existing Secrets for name (Keychain or

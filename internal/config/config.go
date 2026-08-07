@@ -15,11 +15,11 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/shhac/lib-agent-cli/creds"
 	"github.com/shhac/lib-agent-cli/xdg"
 )
 
@@ -97,6 +97,17 @@ func (s *Store) configPath() string {
 	return filepath.Join(s.ConfigDir(), "config.json")
 }
 
+// file is config.json's backing store: 0600 writes into a 0700 parent,
+// replacement by rename so a reader never sees a half-written document,
+// and WithLock for a serialized read-modify-write. This used to be
+// hand-rolled with os.ReadFile/os.WriteFile, which carried a lost-update
+// race — two concurrent `config set` invocations each built their write
+// from a snapshot taken before the other landed, so all but the last
+// were erased.
+func (s *Store) file() creds.Store {
+	return creds.Store{Path: s.configPath()}
+}
+
 // Read returns the in-memory config view, loading from disk on first
 // access and caching after. ClearCache() invalidates; Write() does so
 // automatically.
@@ -106,37 +117,60 @@ func (s *Store) Read() *Config {
 	if s.cache != nil {
 		return s.cache
 	}
-	data, err := os.ReadFile(s.configPath())
-	if err != nil {
-		s.cache = defaultConfig()
-		return s.cache
-	}
+	s.cache = s.loadFresh()
+	return s.cache
+}
+
+// loadFresh parses config.json straight from disk, bypassing the cache,
+// falling back to the built-in defaults for a missing or unparseable
+// file. It is the single definition of "what a from-scratch read looks
+// like", shared by Read (which caches the result) and Update (which must
+// never hand a mutate callback the cached pointer).
+func (s *Store) loadFresh() *Config {
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		s.cache = defaultConfig()
-		return s.cache
+	if err := s.file().Load(&cfg); err != nil {
+		return defaultConfig()
 	}
 	applyDefaults(&cfg)
-	s.cache = &cfg
-	return s.cache
+	return &cfg
 }
 
 // Write persists cfg to disk and invalidates the cache so the next
 // Read re-inflates via applyDefaults.
+//
+// Write is a blind overwrite; anything that derives its new value from
+// the current one must go through Update instead.
 func (s *Store) Write(cfg *Config) error {
+	err := s.file().Save(cfg)
 	s.mu.Lock()
 	s.cache = nil
 	s.mu.Unlock()
+	return err
+}
 
-	dir := s.ConfigDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.configPath(), append(data, '\n'), 0o644)
+// Update applies mutate to a config loaded fresh from disk, under one
+// exclusive lock spanning read, mutate and write, so two concurrent
+// invocations serialize instead of each building its write from a stale
+// snapshot. The cache is bypassed while the lock is held — mutate always
+// sees what was just read off disk — and invalidated afterwards so a
+// later Read cannot hand back the pre-write value.
+//
+// WithLock rather than creds.Store.Update because loadFresh has to keep
+// falling back to the built-in defaults for an unparseable config.json,
+// which Update's load step would instead surface as a hard error.
+func (s *Store) Update(mutate func(*Config) error) error {
+	err := s.file().WithLock(func() error {
+		cfg := s.loadFresh()
+		if err := mutate(cfg); err != nil {
+			return err
+		}
+		return s.file().Save(cfg)
+	})
+
+	s.mu.Lock()
+	s.cache = nil
+	s.mu.Unlock()
+	return err
 }
 
 // ClearCache drops the in-memory cache. Tests use this after directly
@@ -174,6 +208,11 @@ func Read() *Config { return defaultStore.Read() }
 
 // Write persists via the default store.
 func Write(cfg *Config) error { return defaultStore.Write(cfg) }
+
+// Update applies mutate under the default store's exclusive lock. Any
+// change derived from the current config belongs here, not in
+// Read-then-Write.
+func Update(mutate func(*Config) error) error { return defaultStore.Update(mutate) }
 
 // ClearCache invalidates the default store's cache.
 func ClearCache() { defaultStore.ClearCache() }

@@ -50,17 +50,18 @@ func SetVisibleHeaders(name string, headers []string) error {
 }
 
 // mutateEntry loads the index, applies fn to the named entry, and writes
-// it back. Returns NotFoundError if the credential doesn't exist.
+// it back — all under the index's exclusive lock, so a setter running
+// against one profile can't erase a concurrent write to another. Returns
+// NotFoundError if the credential doesn't exist, which aborts the update
+// before anything is persisted.
 func mutateEntry(name string, fn func(*indexEntry)) error {
-	idx, err := readIndex()
-	if err != nil {
-		return err
-	}
-	e, ok := idx[name]
-	if !ok {
-		return &NotFoundError{Name: name}
-	}
-	fn(&e)
-	idx[name] = e
-	return writeIndex(idx)
+	return updateIndex(func(idx map[string]indexEntry) error {
+		e, ok := idx[name]
+		if !ok {
+			return &NotFoundError{Name: name}
+		}
+		fn(&e)
+		idx[name] = e
+		return nil
+	})
 }

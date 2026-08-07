@@ -38,7 +38,7 @@ func newRootCmd(version string) *cobra.Command {
 		// Precedence for --profile: flag > config.default.profile > empty.
 		// No env var — config replaces AGENT_DEEPWEB_PROFILE in v0.4. Runs in
 		// PersistentPreRunE so it sees the parsed --profile flag value.
-		ConfigDefaults: func() {
+		ConfigDefaults: func(*cobra.Command) {
 			if g.Profile == "" {
 				g.Profile = config.Read().Defaults.Profile
 			}

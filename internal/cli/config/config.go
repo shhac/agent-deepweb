@@ -95,14 +95,22 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Persist a config key value",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := cfg.Read()
-			if err := cfg.Set(c, args[0], args[1]); err != nil {
-				if errors.Is(err, cfg.ErrUnknownKey) {
+			// Read-modify-write goes through Update so a concurrent
+			// `config set` can't erase this key: the whole load → set →
+			// save runs under one lock. setErr separates a rejected key
+			// (agent-fixable) from a failed write (human-fixable), which
+			// Update collapses into one return value.
+			var setErr error
+			if err := cfg.Update(func(c *cfg.Config) error {
+				setErr = cfg.Set(c, args[0], args[1])
+				return setErr
+			}); err != nil {
+				switch {
+				case errors.Is(setErr, cfg.ErrUnknownKey):
 					return shared.Fail(unknownKeyError(args[0]))
+				case setErr != nil:
+					return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent, "%s", setErr.Error()))
 				}
-				return shared.Fail(agenterrors.Newf(agenterrors.FixableByAgent, "%s", err.Error()))
-			}
-			if err := cfg.Write(c); err != nil {
 				return shared.FailHuman(err)
 			}
 			// Re-read so applyDefaults runs and Get reports the effective
@@ -118,11 +126,14 @@ func Register(root *cobra.Command, _ shared.Globals) {
 		Short: "Revert a config key to the built-in default",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := cfg.Read()
-			if err := cfg.Unset(c, args[0]); err != nil {
-				return shared.Fail(unknownKeyError(args[0]))
-			}
-			if err := cfg.Write(c); err != nil {
+			var unsetErr error
+			if err := cfg.Update(func(c *cfg.Config) error {
+				unsetErr = cfg.Unset(c, args[0])
+				return unsetErr
+			}); err != nil {
+				if unsetErr != nil {
+					return shared.Fail(unknownKeyError(args[0]))
+				}
 				return shared.FailHuman(err)
 			}
 			val, src, _ := cfg.Get(cfg.Read(), args[0])
