@@ -1,6 +1,13 @@
 ---
 name: agent-deepweb
-description: Credential-gated HTTP requests for AI agents via named profiles. Stored secret values are never visible to the caller. Use when the user has registered a named profile and wants an authenticated fetch, GraphQL POST, or JSON-RPC call; when a request needs a Bearer token, basic auth, cookie, or custom auth header; or when the user mentions `agent-deepweb`, a profile name, "use my profile", or "make an authenticated request". Does NOT replace `curl`, `WebFetch`, or other HTTP tools for unauthenticated public URLs. Cannot escalate (widen scope, rotate secrets, mark cookies visible) without the profile's `--passphrase`, which the LLM does not have.
+description: |
+  Credential-gated HTTP requests via named profiles; stored secret values
+  are never visible to the caller. Use when a request needs a Bearer token,
+  basic auth, cookie, or custom auth header - an authenticated fetch,
+  GraphQL POST, or JSON-RPC call against a registered profile. Does not
+  replace curl or WebFetch for unauthenticated public URLs. Escalation -
+  widening scope, rotating secrets, marking cookies visible - requires the
+  profile's --passphrase, which the LLM does not have.
 allowed-tools: Bash(agent-deepweb *) Read Grep Glob
 ---
 
